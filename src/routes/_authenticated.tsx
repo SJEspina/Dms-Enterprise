@@ -33,8 +33,8 @@ function AuthLayout() {
   }
 
   return (
-    <div className="min-h-screen flex bg-background">
-      <aside className="w-64 bg-sidebar text-sidebar-foreground flex flex-col">
+    <div className="flex h-screen overflow-hidden bg-background">
+      <aside className="h-screen w-64 shrink-0 bg-sidebar text-sidebar-foreground flex flex-col">
         <div className="p-5 border-b border-sidebar-border flex items-center gap-2">
           <div className="h-10 w-10 overflow-hidden rounded-md bg-white ring-1 ring-sidebar-border">
             <img src="/dms-logo.jpg" alt="DMS Enterprise" className="h-full w-full object-cover" />
@@ -81,8 +81,8 @@ function AuthLayout() {
           </Button>
         </div>
       </aside>
-      <main className="flex-1 overflow-auto">
-        <div className="p-8 max-w-7xl mx-auto">
+      <main className="min-w-0 flex-1 overflow-auto">
+        <div className="min-h-full w-full p-6 lg:p-8">
           <Outlet />
         </div>
       </main>

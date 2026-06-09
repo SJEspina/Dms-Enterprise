@@ -45,7 +45,10 @@ function LoginPage() {
     });
     setBusy(false);
     if (error) toast.error(error.message);
-    else toast.success("Account created. Check your email to confirm.");
+    else {
+      toast.success("Account created. Welcome!");
+      navigate({ to: "/dashboard" });
+    }
   };
 
   if (loading) return null;

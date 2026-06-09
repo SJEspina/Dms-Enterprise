@@ -54,8 +54,8 @@ function OrdersPage() {
   );
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="flex min-h-[calc(100vh-4rem)] flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Orders</h1>
           <p className="text-muted-foreground text-sm">Create and manage customer orders.</p>
@@ -68,65 +68,67 @@ function OrdersPage() {
 
       <div className="flex justify-end">
         <Input
-          className="w-64"
+          className="w-full sm:w-80"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search customer name..."
         />
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Customer</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Total</TableHead>
-                <TableHead>Paid</TableHead>
-                <TableHead>Balance</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-16"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredOrders.length === 0 ? (
+      <Card className="flex-1 overflow-hidden">
+        <CardContent className="h-full p-4">
+          <div className="h-full overflow-auto rounded-md border">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                    {search ? "No matching orders" : "No orders yet"}
-                  </TableCell>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Total</TableHead>
+                  <TableHead>Paid</TableHead>
+                  <TableHead>Balance</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-16"></TableHead>
                 </TableRow>
-              ) : (
-                filteredOrders.map((o) => {
-                  const balance = Number(o.total_amount) - Number(o.paid_amount);
-                  return (
-                    <TableRow key={o.id} className="cursor-pointer" onClick={() => setViewing(o)}>
-                      <TableCell className="font-medium">
-                        {o.customer_name}
-                        <div className="text-xs text-muted-foreground">
-                          {o.customer_phone ?? ""}
-                        </div>
-                      </TableCell>
-                      <TableCell>{fmtDate(o.order_date)}</TableCell>
-                      <TableCell>{peso(o.total_amount)}</TableCell>
-                      <TableCell>{peso(o.paid_amount)}</TableCell>
-                      <TableCell className={balance > 0 ? "text-destructive font-medium" : ""}>
-                        {peso(balance)}
-                      </TableCell>
-                      <TableCell>
-                        <StatusPill status={o.payment_status} />
-                      </TableCell>
-                      <TableCell>
-                        <Button size="icon" variant="ghost">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredOrders.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                      {search ? "No matching orders" : "No orders yet"}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredOrders.map((o) => {
+                    const balance = Number(o.total_amount) - Number(o.paid_amount);
+                    return (
+                      <TableRow key={o.id} className="cursor-pointer" onClick={() => setViewing(o)}>
+                        <TableCell className="font-medium">
+                          {o.customer_name}
+                          <div className="text-xs text-muted-foreground">
+                            {o.customer_phone ?? ""}
+                          </div>
+                        </TableCell>
+                        <TableCell>{fmtDate(o.order_date)}</TableCell>
+                        <TableCell>{peso(o.total_amount)}</TableCell>
+                        <TableCell>{peso(o.paid_amount)}</TableCell>
+                        <TableCell className={balance > 0 ? "text-destructive font-medium" : ""}>
+                          {peso(balance)}
+                        </TableCell>
+                        <TableCell>
+                          <StatusPill status={o.payment_status} />
+                        </TableCell>
+                        <TableCell>
+                          <Button size="icon" variant="ghost">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 
@@ -370,6 +372,8 @@ function OrderDetailDialog({ order, onClose, onChange }: any) {
   const updateEditLine = (i: number, patch: Partial<ServiceLine>) => {
     setEditLines((lines) => lines.map((line, idx) => (idx === i ? { ...line, ...patch } : line)));
   };
+  const addEditLine = () =>
+    setEditLines((lines) => [...lines, { service_name: "", price: "", quantity: "1" }]);
 
   const addPayment = useMutation({
     mutationFn: async () => {
@@ -403,13 +407,16 @@ function OrderDetailDialog({ order, onClose, onChange }: any) {
   const saveItems = useMutation({
     mutationFn: async () => {
       const valid = editLines.filter(
-        (l) => l.id && l.service_name && parseFloat(l.price) > 0 && parseInt(l.quantity) > 0,
+        (l) => l.service_name && parseFloat(l.price) > 0 && parseInt(l.quantity) > 0,
       );
       if (valid.length !== editLines.length)
         throw new Error("Each item needs a name, price, and quantity");
 
+      const existing = valid.filter((l) => l.id);
+      const additions = valid.filter((l) => !l.id);
+
       await Promise.all(
-        valid.map(async (l) => {
+        existing.map(async (l) => {
           const price = parseFloat(l.price);
           const quantity = parseInt(l.quantity);
           const { error } = await supabase
@@ -424,12 +431,31 @@ function OrderDetailDialog({ order, onClose, onChange }: any) {
           if (error) throw error;
         }),
       );
+
+      if (additions.length > 0) {
+        const { error } = await supabase.from("order_services").insert(
+          additions.map((l) => {
+            const price = parseFloat(l.price);
+            const quantity = parseInt(l.quantity);
+
+            return {
+              order_id: order.id,
+              service_name: l.service_name,
+              price,
+              quantity,
+              subtotal: price * quantity,
+            };
+          }),
+        );
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       refetch();
       onChange();
       qc.invalidateQueries({ queryKey: ["orders"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["trend"] });
       toast.success("Items updated");
     },
     onError: (e: any) => toast.error(e.message),
@@ -467,9 +493,15 @@ function OrderDetailDialog({ order, onClose, onChange }: any) {
           <div>
             <div className="mb-2 flex items-center justify-between gap-3">
               <h4 className="font-medium text-sm">Items</h4>
-              <Button size="sm" onClick={() => saveItems.mutate()} disabled={saveItems.isPending}>
-                {saveItems.isPending ? "Saving..." : "Save Items"}
-              </Button>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={addEditLine}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Item
+                </Button>
+                <Button size="sm" onClick={() => saveItems.mutate()} disabled={saveItems.isPending}>
+                  {saveItems.isPending ? "Saving..." : "Save Items"}
+                </Button>
+              </div>
             </div>
             <div className="border rounded-lg overflow-hidden">
               <Table>
@@ -485,7 +517,7 @@ function OrderDetailDialog({ order, onClose, onChange }: any) {
                   {editLines.map((s, i) => {
                     const subtotal = (parseFloat(s.price) || 0) * (parseInt(s.quantity) || 0);
                     return (
-                      <TableRow key={s.id}>
+                      <TableRow key={s.id ?? `new-${i}`}>
                         <TableCell>
                           <Input
                             value={s.service_name}
