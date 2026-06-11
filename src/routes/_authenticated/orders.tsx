@@ -49,9 +49,13 @@ function OrdersPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [viewing, setViewing] = useState<any>(null);
   const [search, setSearch] = useState("");
-  const filteredOrders = orders.filter((o) =>
-    o.customer_name.toLowerCase().includes(search.trim().toLowerCase()),
-  );
+  const filteredOrders = orders.filter((o) => {
+    const term = search.trim().toLowerCase();
+    const customerName = o.customer_name?.toLowerCase() ?? "";
+    const notes = o.notes?.toLowerCase() ?? "";
+
+    return customerName.includes(term) || notes.includes(term);
+  });
 
   return (
     <div className="flex min-h-[calc(100vh-4rem)] flex-col gap-6">
@@ -71,7 +75,7 @@ function OrdersPage() {
           className="w-full sm:w-80"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search customer name..."
+          placeholder="Search customer name or note..."
         />
       </div>
 
@@ -82,6 +86,7 @@ function OrdersPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Customer</TableHead>
+                  <TableHead>Notes</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Total</TableHead>
                   <TableHead>Paid</TableHead>
@@ -93,7 +98,7 @@ function OrdersPage() {
               <TableBody>
                 {filteredOrders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                       {search ? "No matching orders" : "No orders yet"}
                     </TableCell>
                   </TableRow>
@@ -107,6 +112,9 @@ function OrdersPage() {
                           <div className="text-xs text-muted-foreground">
                             {o.customer_phone ?? ""}
                           </div>
+                        </TableCell>
+                        <TableCell className="max-w-64 text-sm text-muted-foreground">
+                          {o.notes ? <span className="line-clamp-2">{o.notes}</span> : "-"}
                         </TableCell>
                         <TableCell>{fmtDate(o.order_date)}</TableCell>
                         <TableCell>{peso(o.total_amount)}</TableCell>
@@ -374,6 +382,8 @@ function OrderDetailDialog({ order, onClose, onChange }: any) {
   };
   const addEditLine = () =>
     setEditLines((lines) => [...lines, { service_name: "", price: "", quantity: "1" }]);
+  const removeEditLine = (i: number) =>
+    setEditLines((lines) => lines.filter((_, idx) => idx !== i));
 
   const addPayment = useMutation({
     mutationFn: async () => {
@@ -409,11 +419,21 @@ function OrderDetailDialog({ order, onClose, onChange }: any) {
       const valid = editLines.filter(
         (l) => l.service_name && parseFloat(l.price) > 0 && parseInt(l.quantity) > 0,
       );
+      if (valid.length === 0) throw new Error("Add at least one item");
       if (valid.length !== editLines.length)
         throw new Error("Each item needs a name, price, and quantity");
 
       const existing = valid.filter((l) => l.id);
       const additions = valid.filter((l) => !l.id);
+      const currentIds = new Set(existing.map((l) => l.id));
+      const deletedIds = (full?.order_services ?? [])
+        .map((s: any) => s.id)
+        .filter((id: string) => !currentIds.has(id));
+
+      if (deletedIds.length > 0) {
+        const { error } = await supabase.from("order_services").delete().in("id", deletedIds);
+        if (error) throw error;
+      }
 
       await Promise.all(
         existing.map(async (l) => {
@@ -511,6 +531,7 @@ function OrderDetailDialog({ order, onClose, onChange }: any) {
                     <TableHead>Price</TableHead>
                     <TableHead>Qty</TableHead>
                     <TableHead>Subtotal</TableHead>
+                    <TableHead className="w-12"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -541,6 +562,16 @@ function OrderDetailDialog({ order, onClose, onChange }: any) {
                           />
                         </TableCell>
                         <TableCell className="font-medium">{peso(subtotal)}</TableCell>
+                        <TableCell>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => removeEditLine(i)}
+                            aria-label="Delete item"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     );
                   })}
