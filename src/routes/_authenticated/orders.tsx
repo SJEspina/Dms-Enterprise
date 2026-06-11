@@ -33,6 +33,7 @@ export const Route = createFileRoute("/_authenticated/orders")({ component: Orde
 type ServiceLine = { id?: string; service_name: string; price: string; quantity: string };
 
 function OrdersPage() {
+  const pageSize = 12;
   const qc = useQueryClient();
   const { data: orders = [] } = useQuery({
     queryKey: ["orders"],
@@ -49,6 +50,7 @@ function OrdersPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [viewing, setViewing] = useState<any>(null);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const filteredOrders = orders.filter((o) => {
     const term = search.trim().toLowerCase();
     const customerName = o.customer_name?.toLowerCase() ?? "";
@@ -56,12 +58,24 @@ function OrdersPage() {
 
     return customerName.includes(term) || notes.includes(term);
   });
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
+  const pageStart = (page - 1) * pageSize;
+  const pageEnd = Math.min(pageStart + pageSize, filteredOrders.length);
+  const paginatedOrders = filteredOrders.slice(pageStart, pageEnd);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="flex min-h-[calc(100vh-4rem)] min-w-0 flex-col gap-4 sm:gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Orders</h1>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Orders</h1>
           <p className="text-muted-foreground text-sm">Create and manage customer orders.</p>
         </div>
         <Button onClick={() => setCreateOpen(true)}>
@@ -80,9 +94,9 @@ function OrdersPage() {
       </div>
 
       <Card className="flex-1 overflow-hidden">
-        <CardContent className="h-full p-4">
+        <CardContent className="h-full p-2 sm:p-4">
           <div className="h-full overflow-auto rounded-md border">
-            <Table>
+            <Table className="min-w-[860px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Customer</TableHead>
@@ -103,7 +117,7 @@ function OrdersPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredOrders.map((o) => {
+                  paginatedOrders.map((o) => {
                     const balance = Number(o.total_amount) - Number(o.paid_amount);
                     return (
                       <TableRow key={o.id} className="cursor-pointer" onClick={() => setViewing(o)}>
@@ -137,6 +151,31 @@ function OrdersPage() {
               </TableBody>
             </Table>
           </div>
+          {filteredOrders.length > pageSize && (
+            <div className="mt-3 flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                Showing {pageStart + 1}-{pageEnd} of {filteredOrders.length} orders
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  disabled={page === 1}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                  disabled={page === totalPages}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -237,7 +276,7 @@ function CreateOrderDialog({ open, onOpenChange, onCreated }: any) {
         if (!v) reset();
       }}
     >
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>New Order</DialogTitle>
         </DialogHeader>
@@ -271,8 +310,8 @@ function CreateOrderDialog({ open, onOpenChange, onCreated }: any) {
               {lines.map((l, i) => {
                 const sub = (parseFloat(l.price) || 0) * (parseInt(l.quantity) || 0);
                 return (
-                  <div key={i} className="grid grid-cols-12 gap-2 items-end">
-                    <div className="col-span-5">
+                  <div key={i} className="grid gap-2 sm:grid-cols-12 sm:items-end">
+                    <div className="sm:col-span-5">
                       <Label className="text-xs">Item</Label>
                       <div className="flex gap-1">
                         <Input
@@ -282,7 +321,7 @@ function CreateOrderDialog({ open, onOpenChange, onCreated }: any) {
                         />
                       </div>
                     </div>
-                    <div className="col-span-3">
+                    <div className="sm:col-span-3">
                       <Label className="text-xs">Price</Label>
                       <Input
                         type="number"
@@ -291,7 +330,7 @@ function CreateOrderDialog({ open, onOpenChange, onCreated }: any) {
                         onChange={(e) => updateLine(i, { price: e.target.value })}
                       />
                     </div>
-                    <div className="col-span-2">
+                    <div className="sm:col-span-2">
                       <Label className="text-xs">Qty</Label>
                       <Input
                         type="number"
@@ -300,7 +339,7 @@ function CreateOrderDialog({ open, onOpenChange, onCreated }: any) {
                         onChange={(e) => updateLine(i, { quantity: e.target.value })}
                       />
                     </div>
-                    <div className="col-span-2 flex items-center gap-1">
+                    <div className="flex items-center gap-1 sm:col-span-2">
                       <span className="text-sm font-medium flex-1">{peso(sub)}</span>
                       {lines.length > 1 && (
                         <Button size="icon" variant="ghost" onClick={() => removeLine(i)}>
@@ -314,8 +353,8 @@ function CreateOrderDialog({ open, onOpenChange, onCreated }: any) {
             </div>
           </div>
 
-          <div className="flex items-end justify-between gap-4 bg-muted/50 rounded-lg p-4">
-            <div className="flex-1 max-w-xs">
+          <div className="flex flex-col gap-4 rounded-lg bg-muted/50 p-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="w-full sm:max-w-xs sm:flex-1">
               <Label>Downpayment (optional)</Label>
               <Input
                 type="number"
@@ -324,7 +363,7 @@ function CreateOrderDialog({ open, onOpenChange, onCreated }: any) {
                 onChange={(e) => setDownpayment(e.target.value)}
               />
             </div>
-            <div className="text-right">
+            <div className="text-left sm:text-right">
               <div className="text-xs text-muted-foreground">Total</div>
               <div className="text-2xl font-bold">{peso(total)}</div>
               {parseFloat(downpayment) > 0 && (
@@ -499,9 +538,9 @@ function OrderDetailDialog({ order, onClose, onChange }: any) {
         if (!v) onClose();
       }}
     >
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex flex-wrap items-center gap-2 leading-snug">
             {full.customer_name} <StatusPill status={full.payment_status} />
           </DialogTitle>
           <div className="text-sm text-muted-foreground">
@@ -511,9 +550,9 @@ function OrderDetailDialog({ order, onClose, onChange }: any) {
 
         <div className="space-y-4">
           <div>
-            <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h4 className="font-medium text-sm">Items</h4>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" onClick={addEditLine}>
                   <Plus className="h-4 w-4 mr-1" />
                   Add Item
@@ -523,8 +562,8 @@ function OrderDetailDialog({ order, onClose, onChange }: any) {
                 </Button>
               </div>
             </div>
-            <div className="border rounded-lg overflow-hidden">
-              <Table>
+            <div className="overflow-auto rounded-lg border">
+              <Table className="min-w-[620px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Item</TableHead>
@@ -580,7 +619,7 @@ function OrderDetailDialog({ order, onClose, onChange }: any) {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3 bg-muted/50 rounded-lg p-4">
+          <div className="grid gap-3 rounded-lg bg-muted/50 p-4 sm:grid-cols-3">
             <div>
               <div className="text-xs text-muted-foreground">Total</div>
               <div className="text-lg font-semibold">{peso(full.total_amount)}</div>
@@ -606,7 +645,7 @@ function OrderDetailDialog({ order, onClose, onChange }: any) {
                 {full.payments.map((p: any) => (
                   <div
                     key={p.id}
-                    className="flex items-center justify-between text-sm border rounded-md px-3 py-2"
+                    className="flex flex-col gap-2 rounded-md border px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div>
                       <span className="font-medium">{peso(p.amount)}</span>{" "}
@@ -623,7 +662,7 @@ function OrderDetailDialog({ order, onClose, onChange }: any) {
               </div>
             )}
             {balance > 0 && (
-              <div className="flex gap-2 items-end">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                 <div className="flex-1">
                   <Label>Add Payment</Label>
                   <Input
@@ -649,7 +688,7 @@ function OrderDetailDialog({ order, onClose, onChange }: any) {
           )}
         </div>
 
-        <DialogFooter className="justify-between sm:justify-between">
+        <DialogFooter className="gap-2 sm:justify-between">
           <Button variant="destructive" onClick={deleteOrder}>
             Delete Order
           </Button>

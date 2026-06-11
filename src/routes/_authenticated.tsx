@@ -33,18 +33,18 @@ function AuthLayout() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <aside className="h-screen w-64 shrink-0 bg-sidebar text-sidebar-foreground flex flex-col">
-        <div className="p-5 border-b border-sidebar-border flex items-center gap-2">
+    <div className="flex min-h-screen flex-col overflow-hidden bg-background md:h-screen md:flex-row">
+      <aside className="flex shrink-0 flex-col bg-sidebar text-sidebar-foreground md:h-screen md:w-64">
+        <div className="flex items-center gap-2 border-b border-sidebar-border p-4 md:p-5">
           <div className="h-10 w-10 overflow-hidden rounded-md bg-white ring-1 ring-sidebar-border">
             <img src="/dms-logo.jpg" alt="DMS Enterprise" className="h-full w-full object-cover" />
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="font-semibold">DMS Enterprise</div>
             <div className="text-xs opacity-70">Admin Console</div>
           </div>
         </div>
-        <nav className="flex-1 p-3 space-y-1">
+        <nav className="flex gap-1 overflow-x-auto p-3 md:flex-1 md:flex-col md:space-y-1 md:overflow-visible">
           {nav.map((n) => {
             const active =
               pathname === n.to || (n.to !== "/dashboard" && pathname.startsWith(n.to));
@@ -53,7 +53,7 @@ function AuthLayout() {
                 key={n.to}
                 to={n.to}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
+                  "flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors md:gap-3",
                   active
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
                     : "hover:bg-sidebar-accent/50",
@@ -65,12 +65,14 @@ function AuthLayout() {
             );
           })}
         </nav>
-        <div className="p-3 border-t border-sidebar-border">
-          <div className="text-xs opacity-70 px-3 mb-2 truncate">{session.user.email}</div>
+        <div className="flex items-center gap-2 border-t border-sidebar-border p-3 md:block">
+          <div className="min-w-0 flex-1 truncate px-3 text-xs opacity-70 md:mb-2">
+            {session.user.email}
+          </div>
           <Button
             variant="ghost"
             size="sm"
-            className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            className="shrink-0 justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground md:w-full"
             onClick={async () => {
               await supabase.auth.signOut();
               navigate({ to: "/login" });
@@ -81,8 +83,8 @@ function AuthLayout() {
           </Button>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 overflow-auto">
-        <div className="min-h-full w-full p-6 lg:p-8">
+      <main className="min-h-0 min-w-0 flex-1 overflow-auto">
+        <div className="min-h-full w-full p-4 sm:p-6 lg:p-8">
           <Outlet />
         </div>
       </main>

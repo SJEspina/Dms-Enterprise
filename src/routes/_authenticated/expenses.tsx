@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -46,6 +46,7 @@ const newExpenseForm = (): ExpenseForm => ({
 });
 
 function ExpensesPage() {
+  const pageSize = 12;
   const qc = useQueryClient();
   const { data: expenses = [] } = useQuery({
     queryKey: ["expenses"],
@@ -63,6 +64,15 @@ function ExpensesPage() {
   const [editing, setEditing] = useState<any>(null);
   const [forms, setForms] = useState<ExpenseForm[]>([newExpenseForm()]);
   const form = forms[0];
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(expenses.length / pageSize));
+  const pageStart = (page - 1) * pageSize;
+  const pageEnd = Math.min(pageStart + pageSize, expenses.length);
+  const paginatedExpenses = expenses.slice(pageStart, pageEnd);
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
 
   const reset = () => {
     setEditing(null);
@@ -143,10 +153,10 @@ function ExpensesPage() {
   });
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="flex min-h-[calc(100vh-4rem)] min-w-0 flex-col gap-4 sm:gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Expenses</h1>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Expenses</h1>
           <p className="text-muted-foreground text-sm">Track all business expenses.</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
@@ -156,7 +166,7 @@ function ExpensesPage() {
               New Expense
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editing ? "Edit" : "New"} Expense</DialogTitle>
             </DialogHeader>
@@ -269,9 +279,9 @@ function ExpensesPage() {
       </div>
 
       <Card className="flex-1 overflow-hidden">
-        <CardContent className="h-full p-4">
+        <CardContent className="h-full p-2 sm:p-4">
           <div className="h-full overflow-auto rounded-md border">
-            <Table>
+            <Table className="min-w-[640px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
@@ -289,7 +299,7 @@ function ExpensesPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  expenses.map((e: any) => (
+                  paginatedExpenses.map((e: any) => (
                     <TableRow key={e.id}>
                       <TableCell className="font-medium">{e.name}</TableCell>
                       <TableCell>
@@ -317,6 +327,31 @@ function ExpensesPage() {
               </TableBody>
             </Table>
           </div>
+          {expenses.length > pageSize && (
+            <div className="mt-3 flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                Showing {pageStart + 1}-{pageEnd} of {expenses.length} expenses
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  disabled={page === 1}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                  disabled={page === totalPages}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

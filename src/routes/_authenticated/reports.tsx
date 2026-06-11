@@ -1,12 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { toast } from "sonner";
 import {
   Table,
   TableBody,
@@ -24,7 +33,17 @@ import {
   endOfYear,
   format,
 } from "date-fns";
-import { Download, Search, SlidersHorizontal, TrendingUp, TrendingDown, Wallet } from "lucide-react";
+import {
+  Download,
+  Pencil,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Trash2,
+  TrendingUp,
+  TrendingDown,
+  Wallet,
+} from "lucide-react";
 import {
   CartesianGrid,
   Cell,
@@ -42,19 +61,27 @@ import {
 export const Route = createFileRoute("/_authenticated/reports")({ component: ReportsPage });
 
 function ReportsPage() {
+  const qc = useQueryClient();
   const [from, setFrom] = useState(format(startOfMonth(new Date()), "yyyy-MM-dd"));
   const [to, setTo] = useState(format(endOfMonth(new Date()), "yyyy-MM-dd"));
   const [applied, setApplied] = useState({ from, to });
   const [reportYear, setReportYear] = useState(format(new Date(), "yyyy"));
   const [reportSearch, setReportSearch] = useState("");
   const [reportTypeFilter, setReportTypeFilter] = useState<"All" | "Sales" | "Expense">("All");
+  const [historicalOpen, setHistoricalOpen] = useState(false);
+  const [historicalForm, setHistoricalForm] = useState({
+    sales_month: format(new Date(), "yyyy-MM"),
+    amount: "",
+    notes: "",
+  });
+  const [editingHistoricalId, setEditingHistoricalId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["report", applied],
     queryFn: async () => {
       const fromIso = new Date(applied.from + "T00:00:00").toISOString();
       const toIso = new Date(applied.to + "T23:59:59").toISOString();
-      const [orders, expenses] = await Promise.all([
+      const [orders, expenses, historicalSales] = await Promise.all([
         supabase
           .from("orders")
           .select(
@@ -67,12 +94,26 @@ function ReportsPage() {
           .select("name,amount,expense_date,category")
           .gte("expense_date", fromIso)
           .lte("expense_date", toIso),
+        supabase
+          .from("historical_sales")
+          .select("amount,sales_month,notes")
+          .gte("sales_month", applied.from)
+          .lte("sales_month", applied.to),
       ]);
-      return { orders: orders.data ?? [], expenses: expenses.data ?? [] };
+      return {
+        orders: orders.data ?? [],
+        expenses: expenses.data ?? [],
+        historicalSales: historicalSales.data ?? [],
+      };
     },
   });
 
-  const sales = (data?.orders ?? []).reduce((s, o) => s + Number(o.paid_amount), 0);
+  const orderSales = (data?.orders ?? []).reduce((s, o) => s + Number(o.paid_amount), 0);
+  const historicalSalesTotal = (data?.historicalSales ?? []).reduce(
+    (s, h) => s + Number(h.amount),
+    0,
+  );
+  const sales = orderSales + historicalSalesTotal;
   const totalExpenses = (data?.expenses ?? []).reduce((s, e) => s + Number(e.amount), 0);
   const profit = sales - totalExpenses;
   const chartColors = [
@@ -90,7 +131,7 @@ function ReportsPage() {
   const itemTotal = (data?.orders ?? [])
     .flatMap((order) => order.order_services ?? [])
     .reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
-  const itemMix = Array.from(
+  const itemMixRaw = Array.from(
     (data?.orders ?? [])
       .flatMap((order) => order.order_services ?? [])
       .reduce((items, item) => {
@@ -98,7 +139,20 @@ function ReportsPage() {
         items.set(name, (items.get(name) ?? 0) + Number(item.subtotal || 0));
         return items;
       }, new Map<string, number>()),
-  ).map(([name, value], index) => ({
+  )
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+  const itemMix = [
+    ...itemMixRaw.slice(0, 8),
+    ...(itemMixRaw.length > 8
+      ? [
+          {
+            name: "Other",
+            value: itemMixRaw.slice(8).reduce((sum, item) => sum + item.value, 0),
+          },
+        ]
+      : []),
+  ].map(({ name, value }, index) => ({
     name,
     value,
     percent: itemTotal > 0 ? Math.round((value / itemTotal) * 100) : 0,
@@ -128,7 +182,7 @@ function ReportsPage() {
   const { data: annualTrend, isLoading: annualLoading } = useQuery({
     queryKey: ["annual-report", selectedYear],
     queryFn: async () => {
-      const [orders, expenses] = await Promise.all([
+      const [orders, expenses, historicalSales] = await Promise.all([
         supabase
           .from("orders")
           .select(
@@ -141,6 +195,11 @@ function ReportsPage() {
           .select("name,category,amount,quantity,expense_date,notes")
           .gte("expense_date", yearStart.toISOString())
           .lte("expense_date", yearEnd.toISOString()),
+        supabase
+          .from("historical_sales")
+          .select("amount,sales_month,notes")
+          .gte("sales_month", format(yearStart, "yyyy-MM-dd"))
+          .lte("sales_month", format(yearEnd, "yyyy-MM-dd")),
       ]);
 
       return yearMonths.map((m) => {
@@ -150,7 +209,15 @@ function ReportsPage() {
         const monthExpenseItems = (expenses.data ?? []).filter(
           (e) => new Date(e.expense_date) >= m.from && new Date(e.expense_date) <= m.to,
         );
-        const monthSales = monthOrders.reduce((sum, o) => sum + Number(o.paid_amount), 0);
+        const monthHistoricalSales = (historicalSales.data ?? []).filter(
+          (h) => new Date(`${h.sales_month}T00:00:00`) >= m.from && new Date(`${h.sales_month}T00:00:00`) <= m.to,
+        );
+        const monthOrderSales = monthOrders.reduce((sum, o) => sum + Number(o.paid_amount), 0);
+        const monthHistoricalTotal = monthHistoricalSales.reduce(
+          (sum, sale) => sum + Number(sale.amount),
+          0,
+        );
+        const monthSales = monthOrderSales + monthHistoricalTotal;
         const monthExpenses = monthExpenseItems.reduce((sum, e) => sum + Number(e.amount), 0);
         const salesRows = monthOrders.flatMap((order) => {
           const services =
@@ -167,7 +234,17 @@ function ReportsPage() {
             peso(service.subtotal ?? 0),
             peso(order.paid_amount ?? 0),
           ]);
-        });
+        }).concat(
+          monthHistoricalSales.map((sale) => [
+            format(new Date(`${sale.sales_month}T00:00:00`), "yyyy-MM-dd"),
+            "Historical Sales",
+            sale.notes || "Imported monthly total",
+            "1",
+            peso(sale.amount ?? 0),
+            peso(sale.amount ?? 0),
+            peso(sale.amount ?? 0),
+          ]),
+        );
         const expenseRows = monthExpenseItems.map((expense) => [
           format(new Date(expense.expense_date), "yyyy-MM-dd"),
           expense.name ?? "",
@@ -186,6 +263,20 @@ function ReportsPage() {
           expenseRows,
         };
       });
+    },
+  });
+  const { data: historicalSalesList = [] } = useQuery({
+    queryKey: ["historical-sales", selectedYear],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("historical_sales")
+        .select("*")
+        .gte("sales_month", format(yearStart, "yyyy-MM-dd"))
+        .lte("sales_month", format(yearEnd, "yyyy-MM-dd"))
+        .order("sales_month", { ascending: false });
+
+      if (error) throw error;
+      return data ?? [];
     },
   });
   const generatedOn = format(new Date(), "MMM d, yyyy");
@@ -300,27 +391,233 @@ function ReportsPage() {
       current === "All" ? "Sales" : current === "Sales" ? "Expense" : "All",
     );
   };
+  const resetHistoricalForm = () => {
+    setHistoricalForm({
+      sales_month: format(new Date(), "yyyy-MM"),
+      amount: "",
+      notes: "",
+    });
+    setEditingHistoricalId(null);
+  };
+  const saveHistoricalSales = useMutation({
+    mutationFn: async () => {
+      const amount = parseFloat(historicalForm.amount);
+
+      if (!historicalForm.sales_month) throw new Error("Select a month");
+      if (!amount || amount <= 0) throw new Error("Enter a valid sales amount");
+
+      const payload = {
+        sales_month: `${historicalForm.sales_month}-01`,
+        amount,
+        notes: historicalForm.notes || null,
+      };
+      const { error } = editingHistoricalId
+        ? await supabase.from("historical_sales").update(payload).eq("id", editingHistoricalId)
+        : await supabase.from("historical_sales").insert(payload);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["report"] });
+      qc.invalidateQueries({ queryKey: ["annual-report"] });
+      qc.invalidateQueries({ queryKey: ["historical-sales"] });
+      const wasEditing = Boolean(editingHistoricalId);
+      resetHistoricalForm();
+      setHistoricalOpen(false);
+      toast.success(wasEditing ? "Historical sales updated" : "Historical sales saved");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+  const deleteHistoricalSales = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("historical_sales").delete().eq("id", id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["report"] });
+      qc.invalidateQueries({ queryKey: ["annual-report"] });
+      qc.invalidateQueries({ queryKey: ["historical-sales"] });
+      toast.success("Historical sales deleted");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+  const editHistoricalSale = (sale: (typeof historicalSalesList)[number]) => {
+    setEditingHistoricalId(sale.id);
+    setHistoricalForm({
+      sales_month: format(new Date(`${sale.sales_month}T00:00:00`), "yyyy-MM"),
+      amount: String(sale.amount),
+      notes: sale.notes ?? "",
+    });
+  };
+  const confirmDeleteHistoricalSale = (sale: (typeof historicalSalesList)[number]) => {
+    const month = format(new Date(`${sale.sales_month}T00:00:00`), "MMMM yyyy");
+
+    if (window.confirm(`Delete historical sales for ${month}?`)) {
+      deleteHistoricalSales.mutate(sale.id);
+    }
+  };
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] flex-col gap-6">
+    <div className="flex min-h-[calc(100vh-4rem)] min-w-0 flex-col gap-4 sm:gap-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Reports</h1>
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Reports</h1>
         <p className="text-muted-foreground text-sm">Filter by custom date range.</p>
       </div>
 
       <Card>
-        <CardContent className="pt-6 flex flex-wrap items-end gap-3">
-          <div>
-            <Label>From</Label>
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+        <CardContent className="flex flex-col gap-3 pt-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+            <div className="w-full sm:w-auto">
+              <Label>From</Label>
+              <Input
+                className="w-full sm:w-auto"
+                type="date"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+              />
+            </div>
+            <div className="w-full sm:w-auto">
+              <Label>To</Label>
+              <Input
+                className="w-full sm:w-auto"
+                type="date"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+              />
+            </div>
+            <Button className="w-full sm:w-auto" onClick={() => setApplied({ from, to })}>
+              Apply
+            </Button>
           </div>
-          <div>
-            <Label>To</Label>
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-          </div>
-          <Button onClick={() => setApplied({ from, to })}>Apply</Button>
+          <Button
+            className="w-full sm:w-auto lg:ml-auto"
+            variant="outline"
+            onClick={() => setHistoricalOpen(true)}
+          >
+            <Plus className="h-4 w-4" />
+            Historical Sales
+          </Button>
         </CardContent>
       </Card>
+
+      <Dialog
+        open={historicalOpen}
+        onOpenChange={(open) => {
+          setHistoricalOpen(open);
+          if (!open) resetHistoricalForm();
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{editingHistoricalId ? "Edit Historical Sales" : "Add Historical Sales"}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div>
+              <Label>Month</Label>
+              <Input
+                type="month"
+                value={historicalForm.sales_month}
+                onChange={(e) =>
+                  setHistoricalForm({ ...historicalForm, sales_month: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label>Total Sales</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={historicalForm.amount}
+                onChange={(e) => setHistoricalForm({ ...historicalForm, amount: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Notes</Label>
+              <Textarea
+                value={historicalForm.notes}
+                onChange={(e) => setHistoricalForm({ ...historicalForm, notes: e.target.value })}
+                placeholder="January imported sales total"
+              />
+            </div>
+            <div className="rounded-md border">
+              <div className="flex items-center justify-between gap-3 border-b p-3">
+                <div>
+                  <p className="font-medium">Saved Historical Sales</p>
+                  <p className="text-muted-foreground text-xs">{selectedYear}</p>
+                </div>
+                {editingHistoricalId && (
+                  <Button variant="outline" size="sm" onClick={resetHistoricalForm}>
+                    New
+                  </Button>
+                )}
+              </div>
+              <div className="max-h-60 overflow-y-auto">
+                {historicalSalesList.length === 0 ? (
+                  <p className="text-muted-foreground p-3 text-sm">No historical sales saved yet.</p>
+                ) : (
+                  historicalSalesList.map((sale) => (
+                    <div
+                      key={sale.id}
+                      className="grid grid-cols-[1fr_auto] items-center gap-3 border-b p-3 last:border-b-0"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium">
+                            {format(new Date(`${sale.sales_month}T00:00:00`), "MMM yyyy")}
+                          </p>
+                          <Badge variant="secondary">{peso(sale.amount)}</Badge>
+                        </div>
+                        {sale.notes && (
+                          <p className="text-muted-foreground mt-1 truncate text-xs">
+                            {sale.notes}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          type="button"
+                          onClick={() => editHistoricalSale(sale)}
+                          title="Edit historical sales"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          type="button"
+                          onClick={() => confirmDeleteHistoricalSale(sale)}
+                          disabled={deleteHistoricalSales.isPending}
+                          title="Delete historical sales"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setHistoricalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => saveHistoricalSales.mutate()}
+              disabled={saveHistoricalSales.isPending}
+            >
+              {saveHistoricalSales.isPending
+                ? "Saving..."
+                : editingHistoricalId
+                  ? "Update"
+                  : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid gap-4 md:grid-cols-3">
         <Stat
@@ -364,11 +661,17 @@ function ReportsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="h-[38vh] min-h-80">
+          <div className="h-72 min-h-0 sm:h-[38vh] sm:min-h-80">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={annualTrend ?? []}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                <XAxis dataKey="month" stroke="var(--color-muted-foreground)" fontSize={12} />
+                <XAxis
+                  dataKey="month"
+                  stroke="var(--color-muted-foreground)"
+                  fontSize={12}
+                  interval="preserveStartEnd"
+                  minTickGap={12}
+                />
                 <YAxis stroke="var(--color-muted-foreground)" fontSize={12} />
                 <Tooltip
                   contentStyle={{
@@ -425,7 +728,7 @@ function ReportsPage() {
               </div>
             ) : (
               <div className="grid items-center gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(180px,240px)]">
-                <div className="grid gap-y-3">
+                <div className="grid max-h-64 gap-y-3 overflow-auto pr-1">
                   {itemMix.map((item) => (
                     <div key={item.name} className="flex min-w-0 items-center gap-2 text-xs">
                       <span
@@ -550,19 +853,24 @@ function ReportsPage() {
                 className="pl-9"
               />
             </div>
-            <Button variant="outline" onClick={exportReports} disabled={visibleReports.length === 0}>
+            <Button
+              className="w-full sm:w-auto"
+              variant="outline"
+              onClick={exportReports}
+              disabled={visibleReports.length === 0}
+            >
               <Download className="h-4 w-4" />
               Export
             </Button>
-            <Button variant="outline" onClick={cycleReportFilter}>
+            <Button className="w-full sm:w-auto" variant="outline" onClick={cycleReportFilter}>
               <SlidersHorizontal className="h-4 w-4" />
               {reportTypeFilter === "All" ? "Filter" : reportTypeFilter}
             </Button>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-hidden rounded-md border">
-            <Table>
+          <div className="overflow-auto rounded-md border">
+            <Table className="min-w-[820px]">
               <TableHeader>
                 <TableRow className="bg-muted/40">
                   <TableHead>Report Name</TableHead>

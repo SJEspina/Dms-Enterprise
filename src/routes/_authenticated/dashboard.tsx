@@ -14,6 +14,7 @@ import {
   endOfMonth,
   endOfYear,
   eachDayOfInterval,
+  eachMonthOfInterval,
   format,
 } from "date-fns";
 import {
@@ -49,7 +50,7 @@ function Dashboard() {
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard", range],
     queryFn: async () => {
-      const [orders, expenses, recentOrders] = await Promise.all([
+      const [orders, expenses, historicalSales, recentOrders] = await Promise.all([
         supabase
           .from("orders")
           .select(
@@ -63,6 +64,11 @@ function Dashboard() {
           .gte("expense_date", from.toISOString())
           .lte("expense_date", to.toISOString()),
         supabase
+          .from("historical_sales")
+          .select("amount,sales_month")
+          .gte("sales_month", format(from, "yyyy-MM-dd"))
+          .lte("sales_month", format(to, "yyyy-MM-dd")),
+        supabase
           .from("orders")
           .select(
             "id,customer_name,customer_phone,total_amount,paid_amount,payment_status,status,order_date,order_services(service_name,quantity)",
@@ -74,56 +80,79 @@ function Dashboard() {
       return {
         orders: orders.data ?? [],
         expenses: expenses.data ?? [],
+        historicalSales: historicalSales.data ?? [],
         recent: recentOrders.data ?? [],
       };
     },
   });
 
-  const sales = (data?.orders ?? []).reduce((s, o) => s + Number(o.paid_amount), 0);
+  const orderSales = (data?.orders ?? []).reduce((s, o) => s + Number(o.paid_amount), 0);
+  const historicalSalesTotal = (data?.historicalSales ?? []).reduce(
+    (s, sale) => s + Number(sale.amount),
+    0,
+  );
+  const sales = orderSales + historicalSalesTotal;
   const totalExpenses = (data?.expenses ?? []).reduce((s, e) => s + Number(e.amount), 0);
   const profit = sales - totalExpenses;
   const orderCount = (data?.orders ?? []).length;
 
-  const currentMonthStart = startOfMonth(new Date());
-  const currentMonthEnd = endOfMonth(new Date());
-
-  const trendDays = eachDayOfInterval({
-    start: currentMonthStart,
-    end: currentMonthEnd,
-  }).map((d) => ({
-    day: format(d, "MMM d"),
-    date: startOfDay(d),
-  }));
+  const trendPeriods =
+    range === "year"
+      ? eachMonthOfInterval({ start: from, end: to }).map((d) => ({
+          label: format(d, "MMM"),
+          from: startOfMonth(d),
+          to: endOfMonth(d),
+        }))
+      : eachDayOfInterval({ start: from, end: to }).map((d) => ({
+          label: range === "day" ? format(d, "MMM d") : format(d, "MMM d"),
+          from: startOfDay(d),
+          to: endOfDay(d),
+        }));
 
   const { data: trend } = useQuery({
-    queryKey: ["trend", format(currentMonthStart, "yyyy-MM")],
+    queryKey: ["trend", range, from.toISOString(), to.toISOString()],
     queryFn: async () => {
-      const [o, e] = await Promise.all([
+      const [o, e, h] = await Promise.all([
         supabase
           .from("orders")
           .select("paid_amount,order_date")
-          .gte("order_date", currentMonthStart.toISOString())
-          .lte("order_date", currentMonthEnd.toISOString()),
+          .gte("order_date", from.toISOString())
+          .lte("order_date", to.toISOString()),
         supabase
           .from("expenses")
           .select("amount,expense_date")
-          .gte("expense_date", currentMonthStart.toISOString())
-          .lte("expense_date", currentMonthEnd.toISOString()),
+          .gte("expense_date", from.toISOString())
+          .lte("expense_date", to.toISOString()),
+        supabase
+          .from("historical_sales")
+          .select("amount,sales_month")
+          .gte("sales_month", format(from, "yyyy-MM-dd"))
+          .lte("sales_month", format(to, "yyyy-MM-dd")),
       ]);
 
-      return trendDays.map((td) => {
-        const dayEnd = endOfDay(td.date);
-
-        const sales = (o.data ?? [])
-          .filter((x) => new Date(x.order_date) >= td.date && new Date(x.order_date) <= dayEnd)
+      return trendPeriods.map((period) => {
+        const orderSales = (o.data ?? [])
+          .filter(
+            (x) => new Date(x.order_date) >= period.from && new Date(x.order_date) <= period.to,
+          )
           .reduce((s, x) => s + Number(x.paid_amount), 0);
-
-        const exp = (e.data ?? [])
-          .filter((x) => new Date(x.expense_date) >= td.date && new Date(x.expense_date) <= dayEnd)
+        const historicalSales = (h.data ?? [])
+          .filter((x) => {
+            const saleDate = new Date(`${x.sales_month}T00:00:00`);
+            return saleDate >= period.from && saleDate <= period.to;
+          })
           .reduce((s, x) => s + Number(x.amount), 0);
 
+        const exp = (e.data ?? [])
+          .filter(
+            (x) =>
+              new Date(x.expense_date) >= period.from && new Date(x.expense_date) <= period.to,
+          )
+          .reduce((s, x) => s + Number(x.amount), 0);
+        const sales = orderSales + historicalSales;
+
         return {
-          day: td.day,
+          day: period.label,
           sales,
           expenses: exp,
           profit: sales - exp,
@@ -229,7 +258,7 @@ function Dashboard() {
         <CardHeader>
           <CardTitle>Profit Trend</CardTitle>
           <CardDescription>
-            Current month received payments, expenses, and net profit
+            Selected period received payments, expenses, and net profit
           </CardDescription>
         </CardHeader>
 
@@ -242,7 +271,8 @@ function Dashboard() {
                   dataKey="day"
                   stroke="var(--color-muted-foreground)"
                   fontSize={12}
-                  interval={0}
+                  interval="preserveStartEnd"
+                  minTickGap={18}
                 />
                 <YAxis stroke="var(--color-muted-foreground)" fontSize={12} />
 
@@ -287,18 +317,18 @@ function Dashboard() {
         </CardContent>
       </Card>
 
-      <div className="grid flex-1 gap-4 lg:grid-cols-2 xl:grid-cols-4">
-        <Card className="lg:col-span-2">
+      <div className="grid flex-1 gap-4 2xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)_minmax(280px,1fr)]">
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Recent Orders</CardTitle>
           </CardHeader>
 
-          <CardContent className="pt-0">
+          <CardContent className="min-w-0 pt-0">
             {(data?.recent ?? []).length === 0 ? (
               <p className="text-sm text-muted-foreground">No orders yet.</p>
             ) : (
               <div className="divide-y">
-                <div className="hidden grid-cols-[minmax(120px,1fr)_120px_minmax(180px,1.5fr)_120px_120px] gap-4 px-1 pb-2 text-xs font-medium text-muted-foreground md:grid">
+                <div className="hidden grid-cols-[minmax(100px,1fr)_95px_minmax(120px,1.2fr)_105px_130px] gap-3 px-1 pb-2 text-xs font-medium text-muted-foreground md:grid">
                   <div>Name</div>
                   <div>Date</div>
                   <div>Items</div>
@@ -308,7 +338,7 @@ function Dashboard() {
                 {data!.recent.slice(0, 5).map((o) => (
                   <div
                     key={o.id}
-                    className="grid gap-3 py-4 md:grid-cols-[minmax(120px,1fr)_120px_minmax(180px,1.5fr)_120px_120px] md:items-start md:gap-4"
+                    className="grid gap-3 py-4 md:grid-cols-[minmax(100px,1fr)_95px_minmax(120px,1.2fr)_105px_130px] md:items-start"
                   >
                     <div className="min-w-0">
                       <div className="truncate font-semibold">{o.customer_name}</div>
@@ -324,23 +354,27 @@ function Dashboard() {
                     </div>
 
                     <div className="truncate text-sm text-muted-foreground">
-                      {(
-                        o.order_services?.map((item) => {
-                          const quantity = Number(item.quantity || 1);
-                          return `${item.service_name}${quantity > 1 ? ` x${quantity}` : ""}`;
-                        }) ?? []
-                      ).join(", ") || "No items listed"}
+                      {(() => {
+                        const items = o.order_services ?? [];
+                        const first = items[0];
+                        if (!first) return "No items listed";
+
+                        const quantity = Number(first.quantity || 1);
+                        const label = `${first.service_name}${quantity > 1 ? ` x${quantity}` : ""}`;
+
+                        return items.length > 1 ? `${label}, ...` : label;
+                      })()}
                     </div>
 
-                    <div className="font-semibold tabular-nums md:text-right">
+                    <div className="font-semibold tabular-nums md:text-left">
                       {peso(o.total_amount)}
                     </div>
 
-                    <div className="flex flex-wrap gap-1 md:flex-col md:items-end">
+                    <div className="flex flex-col items-end gap-1">
                       <StatusPill status={o.payment_status} />
 
                       {Number(o.total_amount) > Number(o.paid_amount) && (
-                        <span className="inline-block rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+                        <span className="inline-flex whitespace-nowrap rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
                           Balance {peso(Number(o.total_amount) - Number(o.paid_amount))}
                         </span>
                       )}
@@ -352,7 +386,7 @@ function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Payment Status</CardTitle>
             <CardDescription>Orders in the selected period</CardDescription>
@@ -396,7 +430,7 @@ function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Top Customers</CardTitle>
             <CardDescription>Highest spending customers in the selected period</CardDescription>

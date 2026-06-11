@@ -73,5 +73,6 @@
 
 @layer base {
   * { border-color: var(--color-border); }
+  html, body { max-width: 100%; overflow-x: hidden; }
   body { background-color: var(--color-background); color: var(--color-foreground); font-feature-settings: "cv02","cv03","cv04","cv11"; }
 }
