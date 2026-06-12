@@ -446,12 +446,12 @@ function Dashboard() {
                 {topCustomers.map((customer, index) => (
                   <div
                     key={customer.name}
-                    className={`grid grid-cols-[auto_minmax(0,1fr)] gap-3 rounded-md border p-3 ${
+                    className={`grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-md border p-3 ${
                       topCustomerRankStyles[index]?.row ?? "bg-muted/20"
                     }`}
                   >
                     <div
-                      className={`flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold ${
+                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold leading-none tabular-nums ${
                         topCustomerRankStyles[index]?.rank ?? "bg-muted text-muted-foreground"
                       }`}
                     >
