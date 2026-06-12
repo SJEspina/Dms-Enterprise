@@ -14,8 +14,11 @@ import {
   endOfMonth,
   endOfYear,
   eachDayOfInterval,
+  eachHourOfInterval,
   eachMonthOfInterval,
   format,
+  endOfHour,
+  startOfHour,
 } from "date-fns";
 import {
   LineChart,
@@ -97,17 +100,31 @@ function Dashboard() {
   const orderCount = (data?.orders ?? []).length;
 
   const trendPeriods =
-    range === "year"
-      ? eachMonthOfInterval({ start: from, end: to }).map((d) => ({
-          label: format(d, "MMM"),
-          from: startOfMonth(d),
-          to: endOfMonth(d),
+    range === "day"
+      ? eachHourOfInterval({ start: from, end: to }).map((d) => ({
+          label: format(d, "ha"),
+          from: startOfHour(d),
+          to: endOfHour(d),
         }))
-      : eachDayOfInterval({ start: from, end: to }).map((d) => ({
-          label: range === "day" ? format(d, "MMM d") : format(d, "MMM d"),
-          from: startOfDay(d),
-          to: endOfDay(d),
-        }));
+      : range === "year"
+        ? eachMonthOfInterval({ start: from, end: to }).map((d) => ({
+            label: format(d, "MMM"),
+            from: startOfMonth(d),
+            to: endOfMonth(d),
+          }))
+        : eachDayOfInterval({ start: from, end: to }).map((d) => ({
+            label: format(d, "MMM d"),
+            from: startOfDay(d),
+            to: endOfDay(d),
+          }));
+  const trendTicks = trendPeriods
+    .filter(
+      (_, index) =>
+        (range === "day" && (index % 3 === 0 || index === trendPeriods.length - 1)) ||
+        (range === "month" && (index % 2 === 0 || index === trendPeriods.length - 1)) ||
+        range === "year",
+    )
+    .map((period) => period.label);
 
   const { data: trend } = useQuery({
     queryKey: ["trend", range, from.toISOString(), to.toISOString()],
@@ -145,8 +162,7 @@ function Dashboard() {
 
         const exp = (e.data ?? [])
           .filter(
-            (x) =>
-              new Date(x.expense_date) >= period.from && new Date(x.expense_date) <= period.to,
+            (x) => new Date(x.expense_date) >= period.from && new Date(x.expense_date) <= period.to,
           )
           .reduce((s, x) => s + Number(x.amount), 0);
         const sales = orderSales + historicalSales;
@@ -160,6 +176,9 @@ function Dashboard() {
       });
     },
   });
+  const hasTrendActivity = (trend ?? []).some(
+    (point) => point.sales !== 0 || point.expenses !== 0 || point.profit !== 0,
+  );
 
   const paymentMix = ["paid", "partial", "pending"]
     .map((status) => ({
@@ -264,55 +283,69 @@ function Dashboard() {
 
         <CardContent>
           <div className="h-[42vh] min-h-96">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trend ?? []}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                <XAxis
-                  dataKey="day"
-                  stroke="var(--color-muted-foreground)"
-                  fontSize={12}
-                  interval="preserveStartEnd"
-                  minTickGap={18}
-                />
-                <YAxis stroke="var(--color-muted-foreground)" fontSize={12} />
+            {!trend || hasTrendActivity || range !== "day" ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={trend ?? []}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                  <XAxis
+                    dataKey="day"
+                    ticks={trendTicks}
+                    interval={0}
+                    stroke="var(--color-muted-foreground)"
+                    fontSize={12}
+                    minTickGap={18}
+                  />
+                  <YAxis
+                    stroke="var(--color-muted-foreground)"
+                    fontSize={12}
+                    tickFormatter={(value: number) => peso(value)}
+                  />
 
-                <Tooltip
-                  contentStyle={{
-                    background: "var(--color-card)",
-                    border: "1px solid var(--color-border)",
-                    borderRadius: 8,
-                  }}
-                  formatter={(v: number) => peso(v)}
-                />
+                  <Tooltip
+                    contentStyle={{
+                      background: "var(--color-card)",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: 8,
+                    }}
+                    formatter={(v: number) => peso(v)}
+                  />
 
-                <Legend />
+                  <Legend />
 
-                <Line
-                  type="monotone"
-                  dataKey="sales"
-                  name="Sales"
-                  stroke="var(--color-primary)"
-                  strokeWidth={2.5}
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="expenses"
-                  name="Expenses"
-                  stroke="var(--color-destructive)"
-                  strokeWidth={2.5}
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="profit"
-                  name="Profit"
-                  stroke="var(--color-success)"
-                  strokeWidth={2.5}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+                  <Line
+                    type="monotone"
+                    dataKey="sales"
+                    name="Sales"
+                    stroke="var(--color-primary)"
+                    strokeWidth={2.5}
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="expenses"
+                    name="Expenses"
+                    stroke="var(--color-destructive)"
+                    strokeWidth={2.5}
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="profit"
+                    name="Profit"
+                    stroke="var(--color-success)"
+                    strokeWidth={2.5}
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-full items-center justify-center text-center text-sm text-muted-foreground">
+                No sales or expenses recorded today.
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
