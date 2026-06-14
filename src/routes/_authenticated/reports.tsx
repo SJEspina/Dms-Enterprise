@@ -35,6 +35,7 @@ import {
 } from "date-fns";
 import {
   Download,
+  type LucideIcon,
   Pencil,
   Plus,
   Search,
@@ -45,11 +46,12 @@ import {
   Wallet,
 } from "lucide-react";
 import {
+  Area,
   CartesianGrid,
   Cell,
+  ComposedChart,
   Legend,
   Line,
-  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -59,6 +61,10 @@ import {
 } from "recharts";
 
 export const Route = createFileRoute("/_authenticated/reports")({ component: ReportsPage });
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Something went wrong";
+}
 
 function ReportsPage() {
   const qc = useQueryClient();
@@ -143,12 +149,12 @@ function ReportsPage() {
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value);
   const itemMix = [
-    ...itemMixRaw.slice(0, 8),
-    ...(itemMixRaw.length > 8
+    ...itemMixRaw.slice(0, 9),
+    ...(itemMixRaw.length > 9
       ? [
           {
             name: "Other",
-            value: itemMixRaw.slice(8).reduce((sum, item) => sum + item.value, 0),
+            value: itemMixRaw.slice(9).reduce((sum, item) => sum + item.value, 0),
           },
         ]
       : []),
@@ -158,6 +164,7 @@ function ReportsPage() {
     percent: itemTotal > 0 ? Math.round((value / itemTotal) * 100) : 0,
     color: chartColors[index % chartColors.length],
   }));
+  const itemMixColumns = [itemMix.slice(0, 5), itemMix.slice(5, 10)];
   const expenseMix = Array.from(
     (data?.expenses ?? []).reduce((expenses, expense) => {
       const name = expense.category || expense.name || "Uncategorized";
@@ -210,7 +217,9 @@ function ReportsPage() {
           (e) => new Date(e.expense_date) >= m.from && new Date(e.expense_date) <= m.to,
         );
         const monthHistoricalSales = (historicalSales.data ?? []).filter(
-          (h) => new Date(`${h.sales_month}T00:00:00`) >= m.from && new Date(`${h.sales_month}T00:00:00`) <= m.to,
+          (h) =>
+            new Date(`${h.sales_month}T00:00:00`) >= m.from &&
+            new Date(`${h.sales_month}T00:00:00`) <= m.to,
         );
         const monthOrderSales = monthOrders.reduce((sum, o) => sum + Number(o.paid_amount), 0);
         const monthHistoricalTotal = monthHistoricalSales.reduce(
@@ -219,32 +228,34 @@ function ReportsPage() {
         );
         const monthSales = monthOrderSales + monthHistoricalTotal;
         const monthExpenses = monthExpenseItems.reduce((sum, e) => sum + Number(e.amount), 0);
-        const salesRows = monthOrders.flatMap((order) => {
-          const services =
-            order.order_services && order.order_services.length > 0
-              ? order.order_services
-              : [{ service_name: "Unlisted item", quantity: 1, price: 0, subtotal: 0 }];
+        const salesRows = monthOrders
+          .flatMap((order) => {
+            const services =
+              order.order_services && order.order_services.length > 0
+                ? order.order_services
+                : [{ service_name: "Unlisted item", quantity: 1, price: 0, subtotal: 0 }];
 
-          return services.map((service) => [
-            format(new Date(order.order_date), "yyyy-MM-dd"),
-            order.customer_name ?? "",
-            service.service_name ?? "",
-            String(service.quantity ?? ""),
-            peso(service.price ?? 0),
-            peso(service.subtotal ?? 0),
-            peso(order.paid_amount ?? 0),
-          ]);
-        }).concat(
-          monthHistoricalSales.map((sale) => [
-            format(new Date(`${sale.sales_month}T00:00:00`), "yyyy-MM-dd"),
-            "Historical Sales",
-            sale.notes || "Imported monthly total",
-            "1",
-            peso(sale.amount ?? 0),
-            peso(sale.amount ?? 0),
-            peso(sale.amount ?? 0),
-          ]),
-        );
+            return services.map((service) => [
+              format(new Date(order.order_date), "yyyy-MM-dd"),
+              order.customer_name ?? "",
+              service.service_name ?? "",
+              String(service.quantity ?? ""),
+              peso(service.price ?? 0),
+              peso(service.subtotal ?? 0),
+              peso(order.paid_amount ?? 0),
+            ]);
+          })
+          .concat(
+            monthHistoricalSales.map((sale) => [
+              format(new Date(`${sale.sales_month}T00:00:00`), "yyyy-MM-dd"),
+              "Historical Sales",
+              sale.notes || "Imported monthly total",
+              "1",
+              peso(sale.amount ?? 0),
+              peso(sale.amount ?? 0),
+              peso(sale.amount ?? 0),
+            ]),
+          );
         const expenseRows = monthExpenseItems.map((expense) => [
           format(new Date(expense.expense_date), "yyyy-MM-dd"),
           expense.name ?? "",
@@ -426,7 +437,7 @@ function ReportsPage() {
       setHistoricalOpen(false);
       toast.success(wasEditing ? "Historical sales updated" : "Historical sales saved");
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(errorMessage(e)),
   });
   const deleteHistoricalSales = useMutation({
     mutationFn: async (id: string) => {
@@ -440,7 +451,7 @@ function ReportsPage() {
       qc.invalidateQueries({ queryKey: ["historical-sales"] });
       toast.success("Historical sales deleted");
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(errorMessage(e)),
   });
   const editHistoricalSale = (sale: (typeof historicalSalesList)[number]) => {
     setEditingHistoricalId(sale.id);
@@ -465,7 +476,7 @@ function ReportsPage() {
         <p className="text-muted-foreground text-sm">Filter by custom date range.</p>
       </div>
 
-      <Card>
+      <Card className="dms-solid-panel">
         <CardContent className="flex flex-col gap-3 pt-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
             <div className="w-full sm:w-auto">
@@ -510,7 +521,9 @@ function ReportsPage() {
       >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editingHistoricalId ? "Edit Historical Sales" : "Add Historical Sales"}</DialogTitle>
+            <DialogTitle>
+              {editingHistoricalId ? "Edit Historical Sales" : "Add Historical Sales"}
+            </DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
             <div>
@@ -554,7 +567,9 @@ function ReportsPage() {
               </div>
               <div className="max-h-60 overflow-y-auto">
                 {historicalSalesList.length === 0 ? (
-                  <p className="text-muted-foreground p-3 text-sm">No historical sales saved yet.</p>
+                  <p className="text-muted-foreground p-3 text-sm">
+                    No historical sales saved yet.
+                  </p>
                 ) : (
                   historicalSalesList.map((sale) => (
                     <div
@@ -643,7 +658,7 @@ function ReportsPage() {
         />
       </div>
 
-      <Card>
+      <Card className="dms-solid-panel">
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <CardTitle>Annual Trend</CardTitle>
@@ -663,7 +678,21 @@ function ReportsPage() {
         <CardContent>
           <div className="h-72 min-h-0 sm:h-[38vh] sm:min-h-80">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={annualTrend ?? []}>
+              <ComposedChart data={annualTrend ?? []}>
+                <defs>
+                  <linearGradient id="reportsSalesFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.12} />
+                    <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.01} />
+                  </linearGradient>
+                  <linearGradient id="reportsExpensesFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--color-destructive)" stopOpacity={0.2} />
+                    <stop offset="100%" stopColor="var(--color-destructive)" stopOpacity={0.02} />
+                  </linearGradient>
+                  <linearGradient id="reportsProfitFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--color-success)" stopOpacity={0.12} />
+                    <stop offset="100%" stopColor="var(--color-success)" stopOpacity={0.01} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                 <XAxis
                   dataKey="month"
@@ -682,11 +711,41 @@ function ReportsPage() {
                   formatter={(value: number) => peso(value)}
                 />
                 <Legend />
+                <Area
+                  type="monotone"
+                  dataKey="sales"
+                  fill="url(#reportsSalesFill)"
+                  stroke="none"
+                  dot={false}
+                  legendType="none"
+                  tooltipType="none"
+                  isAnimationActive={!annualLoading}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="expenses"
+                  fill="url(#reportsExpensesFill)"
+                  stroke="none"
+                  dot={false}
+                  legendType="none"
+                  tooltipType="none"
+                  isAnimationActive={!annualLoading}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="profit"
+                  fill="url(#reportsProfitFill)"
+                  stroke="none"
+                  dot={false}
+                  legendType="none"
+                  tooltipType="none"
+                  isAnimationActive={!annualLoading}
+                />
                 <Line
                   type="monotone"
                   dataKey="sales"
                   name="Sales"
-                  stroke="var(--color-primary)"
+                  stroke="#2563eb"
                   strokeWidth={2.5}
                   dot={false}
                   isAnimationActive={!annualLoading}
@@ -709,14 +768,14 @@ function ReportsPage() {
                   dot={false}
                   isAnimationActive={!annualLoading}
                 />
-              </LineChart>
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
         </CardContent>
       </Card>
 
       <div className="grid flex-1 gap-4 xl:grid-cols-2">
-        <Card className="overflow-hidden">
+        <Card className="dms-solid-panel overflow-hidden">
           <CardHeader className="space-y-1 pb-3">
             <CardTitle>Sales by Product Category</CardTitle>
             <CardDescription>Product sales share in the selected date range</CardDescription>
@@ -727,21 +786,25 @@ function ReportsPage() {
                 No product sales in range.
               </div>
             ) : (
-              <div className="grid items-center gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(180px,240px)]">
-                <div className="grid max-h-64 gap-y-3 overflow-auto pr-1">
-                  {itemMix.map((item) => (
-                    <div key={item.name} className="flex min-w-0 items-center gap-2 text-xs">
-                      <span
-                        className="h-2 w-2 shrink-0 rounded-sm"
-                        style={{ backgroundColor: item.color }}
-                      />
-                      <span className="truncate font-medium">{item.name}</span>
-                      <span className="shrink-0 text-muted-foreground">- {item.percent}%</span>
+              <div className="grid items-center gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(170px,210px)]">
+                <div className="grid gap-x-5 gap-y-3 sm:grid-cols-2">
+                  {itemMixColumns.map((column, columnIndex) => (
+                    <div key={columnIndex} className="grid gap-y-3">
+                      {column.map((item) => (
+                        <div key={item.name} className="flex min-w-0 items-center gap-2 text-xs">
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-sm"
+                            style={{ backgroundColor: item.color }}
+                          />
+                          <span className="truncate font-medium">{item.name}</span>
+                          <span className="shrink-0 text-muted-foreground">- {item.percent}%</span>
+                        </div>
+                      ))}
                     </div>
                   ))}
                 </div>
 
-                <div className="h-56 min-w-0">
+                <div className="h-48 min-w-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
@@ -776,7 +839,7 @@ function ReportsPage() {
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden">
+        <Card className="dms-solid-panel overflow-hidden">
           <CardHeader className="space-y-1 pb-3">
             <CardTitle>Expenses by Category</CardTitle>
             <CardDescription>Expense share in the selected date range</CardDescription>
@@ -837,7 +900,7 @@ function ReportsPage() {
         </Card>
       </div>
 
-      <Card>
+      <Card className="dms-solid-panel">
         <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <CardTitle>Generated Reports</CardTitle>
@@ -869,7 +932,7 @@ function ReportsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-auto rounded-md border">
+          <div className="overflow-auto rounded-2xl border bg-white/75">
             <Table className="min-w-[820px]">
               <TableHeader>
                 <TableRow className="bg-muted/40">
@@ -933,19 +996,54 @@ function ReportsPage() {
   );
 }
 
-function Stat({ title, value, icon: Icon, tone, loading }: any) {
+type StatProps = {
+  title: string;
+  value: string;
+  icon: LucideIcon;
+  tone?: "success" | "destructive" | "primary";
+  loading?: boolean;
+};
+
+function Stat({ title, value, icon: Icon, tone, loading }: StatProps) {
   const t = {
     success: "bg-success/10 text-success",
     destructive: "bg-destructive/10 text-destructive",
+    primary: "bg-blue-500/10 text-blue-600",
   }[tone as string];
+  const waveClass = {
+    success: "text-success",
+    destructive: "text-destructive",
+    primary: "text-blue-500",
+  }[tone as string];
+  const wavePath =
+    tone === "destructive"
+      ? "M0 54 C18 52 28 57 45 57 C68 58 78 52 91 35 C106 14 132 22 145 39 C159 58 178 59 198 57 C220 55 230 44 250 35 C268 27 284 24 300 25 L300 80 L0 80 Z"
+      : tone === "primary"
+        ? "M0 51 C18 48 28 53 44 55 C64 58 78 56 92 48 C108 38 126 33 145 37 C166 41 176 52 194 52 C214 53 222 43 240 39 C257 35 270 29 286 24 C293 22 297 23 300 24 L300 80 L0 80 Z"
+        : "M0 47 C18 42 32 43 48 48 C68 55 78 56 92 49 C108 40 122 48 136 51 C154 55 164 58 178 52 C194 45 210 42 226 47 C242 52 250 43 266 34 C282 26 292 25 300 28 L300 80 L0 80 Z";
   return (
-    <Card>
-      <CardContent className="pt-6 flex items-center justify-between">
+    <Card className="dms-glass-card min-h-36 transition-transform duration-200 hover:-translate-y-0.5">
+      <svg
+        className={`pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-24 w-full ${waveClass}`}
+        viewBox="0 0 300 80"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <path d={wavePath} fill="currentColor" opacity="0.13" />
+        <path
+          d={wavePath.replace(" L300 80 L0 80 Z", "")}
+          fill="none"
+          stroke="currentColor"
+          strokeOpacity="0.2"
+          strokeWidth="1.5"
+        />
+      </svg>
+      <CardContent className="relative z-10 flex items-center justify-between pt-6">
         <div>
           <p className="text-sm text-muted-foreground">{title}</p>
           <p className="text-2xl font-bold mt-1">{loading ? "—" : value}</p>
         </div>
-        <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${t}`}>
+        <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${t}`}>
           <Icon className="h-5 w-5" />
         </div>
       </CardContent>

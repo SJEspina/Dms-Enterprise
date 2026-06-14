@@ -21,7 +21,8 @@ import {
   startOfHour,
 } from "date-fns";
 import {
-  LineChart,
+  Area,
+  ComposedChart,
   Line,
   XAxis,
   YAxis,
@@ -77,7 +78,7 @@ function Dashboard() {
             "id,customer_name,customer_phone,total_amount,paid_amount,payment_status,status,order_date,order_services(service_name,quantity)",
           )
           .order("created_at", { ascending: false })
-          .limit(5),
+          .limit(7),
       ]);
 
       return {
@@ -209,19 +210,29 @@ function Dashboard() {
     .slice(0, 5);
   const topCustomerRankStyles = [
     {
-      row: "border-success/40 bg-success/10",
-      rank: "bg-success text-success-foreground",
-      amount: "text-success",
+      row: "border-emerald-400/70 bg-emerald-50/80",
+      rank: "bg-emerald-600 text-white",
+      amount: "text-emerald-700",
     },
     {
-      row: "border-primary/40 bg-primary/10",
-      rank: "bg-primary text-primary-foreground",
-      amount: "text-primary",
+      row: "border-blue-300/70 bg-blue-50/70",
+      rank: "bg-blue-500 text-white",
+      amount: "text-blue-700",
     },
     {
-      row: "border-warning/50 bg-warning/10",
-      rank: "bg-warning text-warning-foreground",
-      amount: "text-warning-foreground",
+      row: "border-amber-300/80 bg-amber-50/70",
+      rank: "bg-amber-400 text-amber-950",
+      amount: "text-amber-950",
+    },
+    {
+      row: "border-slate-200 bg-white/65",
+      rank: "bg-slate-100 text-slate-500",
+      amount: "text-slate-900",
+    },
+    {
+      row: "border-slate-200 bg-white/65",
+      rank: "bg-slate-100 text-slate-500",
+      amount: "text-slate-900",
     },
   ];
 
@@ -273,7 +284,7 @@ function Dashboard() {
         />
       </div>
 
-      <Card className="flex-1">
+      <Card className="dms-solid-panel flex-1">
         <CardHeader>
           <CardTitle>Profit Trend</CardTitle>
           <CardDescription>
@@ -285,7 +296,21 @@ function Dashboard() {
           <div className="h-[42vh] min-h-96">
             {!trend || hasTrendActivity || range !== "day" ? (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={trend ?? []}>
+                <ComposedChart data={trend ?? []}>
+                  <defs>
+                    <linearGradient id="dashboardSalesFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.12} />
+                      <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.01} />
+                    </linearGradient>
+                    <linearGradient id="dashboardExpensesFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--color-destructive)" stopOpacity={0.2} />
+                      <stop offset="100%" stopColor="var(--color-destructive)" stopOpacity={0.02} />
+                    </linearGradient>
+                    <linearGradient id="dashboardProfitFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--color-success)" stopOpacity={0.12} />
+                      <stop offset="100%" stopColor="var(--color-success)" stopOpacity={0.01} />
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                   <XAxis
                     dataKey="day"
@@ -312,11 +337,41 @@ function Dashboard() {
 
                   <Legend />
 
+                  <Area
+                    type="monotone"
+                    dataKey="sales"
+                    fill="url(#dashboardSalesFill)"
+                    stroke="none"
+                    dot={false}
+                    legendType="none"
+                    tooltipType="none"
+                    isAnimationActive={false}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="expenses"
+                    fill="url(#dashboardExpensesFill)"
+                    stroke="none"
+                    dot={false}
+                    legendType="none"
+                    tooltipType="none"
+                    isAnimationActive={false}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="profit"
+                    fill="url(#dashboardProfitFill)"
+                    stroke="none"
+                    dot={false}
+                    legendType="none"
+                    tooltipType="none"
+                    isAnimationActive={false}
+                  />
                   <Line
                     type="monotone"
                     dataKey="sales"
                     name="Sales"
-                    stroke="var(--color-primary)"
+                    stroke="#2563eb"
                     strokeWidth={2.5}
                     dot={false}
                     isAnimationActive={false}
@@ -339,7 +394,7 @@ function Dashboard() {
                     dot={false}
                     isAnimationActive={false}
                   />
-                </LineChart>
+                </ComposedChart>
               </ResponsiveContainer>
             ) : (
               <div className="flex h-full items-center justify-center text-center text-sm text-muted-foreground">
@@ -351,7 +406,7 @@ function Dashboard() {
       </Card>
 
       <div className="grid flex-1 gap-4 2xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)_minmax(280px,1fr)]">
-        <Card className="min-w-0">
+        <Card className="dms-solid-panel min-w-0">
           <CardHeader>
             <CardTitle>Recent Orders</CardTitle>
           </CardHeader>
@@ -365,10 +420,10 @@ function Dashboard() {
                   <div>Name</div>
                   <div>Date</div>
                   <div>Items</div>
-                  <div className="text-right">Amount</div>
+                  <div>Amount</div>
                   <div className="text-right">Status</div>
                 </div>
-                {data!.recent.slice(0, 5).map((o) => (
+                {data!.recent.slice(0, 7).map((o) => (
                   <div
                     key={o.id}
                     className="grid gap-3 py-4 md:grid-cols-[minmax(100px,1fr)_95px_minmax(120px,1.2fr)_105px_130px] md:items-start"
@@ -399,9 +454,7 @@ function Dashboard() {
                       })()}
                     </div>
 
-                    <div className="font-semibold tabular-nums md:text-left">
-                      {peso(o.total_amount)}
-                    </div>
+                    <div className="font-semibold tabular-nums">{peso(o.total_amount)}</div>
 
                     <div className="flex flex-col items-end gap-1">
                       <StatusPill status={o.payment_status} />
@@ -419,7 +472,7 @@ function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="min-w-0">
+        <Card className="dms-solid-panel min-w-0">
           <CardHeader>
             <CardTitle>Payment Status</CardTitle>
             <CardDescription>Orders in the selected period</CardDescription>
@@ -463,7 +516,7 @@ function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="min-w-0">
+        <Card className="dms-solid-panel min-w-0">
           <CardHeader>
             <CardTitle>Top Customers</CardTitle>
             <CardDescription>Highest spending customers in the selected period</CardDescription>
@@ -479,7 +532,7 @@ function Dashboard() {
                 {topCustomers.map((customer, index) => (
                   <div
                     key={customer.name}
-                    className={`grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-md border p-3 ${
+                    className={`grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-2xl border p-3 ${
                       topCustomerRankStyles[index]?.row ?? "bg-muted/20"
                     }`}
                   >
@@ -528,19 +581,45 @@ function StatCard({ title, value, icon: Icon, tone, loading }: StatCardProps) {
   const toneClass = {
     success: "bg-success/10 text-success",
     destructive: "bg-destructive/10 text-destructive",
-    primary: "bg-primary/10 text-primary",
+    primary: "bg-blue-500/10 text-blue-600",
   }[tone as string];
+  const waveClass = {
+    success: "text-success",
+    destructive: "text-destructive",
+    primary: "text-blue-500",
+  }[tone as string];
+  const wavePath =
+    tone === "destructive"
+      ? "M0 54 C18 52 28 57 45 57 C68 58 78 52 91 35 C106 14 132 22 145 39 C159 58 178 59 198 57 C220 55 230 44 250 35 C268 27 284 24 300 25 L300 80 L0 80 Z"
+      : tone === "primary"
+        ? "M0 51 C18 48 28 53 44 55 C64 58 78 56 92 48 C108 38 126 33 145 37 C166 41 176 52 194 52 C214 53 222 43 240 39 C257 35 270 29 286 24 C293 22 297 23 300 24 L300 80 L0 80 Z"
+        : "M0 47 C18 42 32 43 48 48 C68 55 78 56 92 49 C108 40 122 48 136 51 C154 55 164 58 178 52 C194 45 210 42 226 47 C242 52 250 43 266 34 C282 26 292 25 300 28 L300 80 L0 80 Z";
 
   return (
-    <Card>
+    <Card className="dms-glass-card min-h-36 transition-transform duration-200 hover:-translate-y-0.5">
+      <svg
+        className={`pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-24 w-full ${waveClass}`}
+        viewBox="0 0 300 80"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <path d={wavePath} fill="currentColor" opacity="0.13" />
+        <path
+          d={wavePath.replace(" L300 80 L0 80 Z", "")}
+          fill="none"
+          stroke="currentColor"
+          strokeOpacity="0.2"
+          strokeWidth="1.5"
+        />
+      </svg>
       <CardContent className="pt-6">
-        <div className="flex items-center justify-between">
+        <div className="relative z-10 flex items-center justify-between">
           <div>
             <p className="text-sm text-muted-foreground">{title}</p>
             <p className="text-2xl font-bold mt-1">{loading ? "—" : value}</p>
           </div>
 
-          <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${toneClass}`}>
+          <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${toneClass}`}>
             <Icon className="h-5 w-5" />
           </div>
         </div>
