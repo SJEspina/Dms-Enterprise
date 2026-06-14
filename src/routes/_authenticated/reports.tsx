@@ -745,6 +745,7 @@ function ReportsPage() {
                   type="monotone"
                   dataKey="sales"
                   name="Sales"
+                  legendType="circle"
                   stroke="#2563eb"
                   strokeWidth={2.5}
                   dot={false}
@@ -754,6 +755,7 @@ function ReportsPage() {
                   type="monotone"
                   dataKey="expenses"
                   name="Expenses"
+                  legendType="circle"
                   stroke="var(--color-destructive)"
                   strokeWidth={2.5}
                   dot={false}
@@ -763,6 +765,7 @@ function ReportsPage() {
                   type="monotone"
                   dataKey="profit"
                   name="Profit"
+                  legendType="circle"
                   stroke="var(--color-success)"
                   strokeWidth={2.5}
                   dot={false}

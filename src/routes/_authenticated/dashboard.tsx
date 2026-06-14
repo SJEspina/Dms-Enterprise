@@ -186,9 +186,9 @@ function Dashboard() {
       name: { paid: "Paid", partial: "Partial", pending: "Pending" }[status] ?? status,
       value: (data?.orders ?? []).filter((o) => o.payment_status === status).length,
       color: {
-        paid: "var(--color-success)",
-        partial: "var(--color-warning)",
-        pending: "var(--color-muted-foreground)",
+        paid: "#10b981",
+        partial: "#fbbf24",
+        pending: "#94a3b8",
       }[status],
     }))
     .filter((item) => item.value > 0);
@@ -371,6 +371,7 @@ function Dashboard() {
                     type="monotone"
                     dataKey="sales"
                     name="Sales"
+                    legendType="circle"
                     stroke="#2563eb"
                     strokeWidth={2.5}
                     dot={false}
@@ -380,6 +381,7 @@ function Dashboard() {
                     type="monotone"
                     dataKey="expenses"
                     name="Expenses"
+                    legendType="circle"
                     stroke="var(--color-destructive)"
                     strokeWidth={2.5}
                     dot={false}
@@ -389,6 +391,7 @@ function Dashboard() {
                     type="monotone"
                     dataKey="profit"
                     name="Profit"
+                    legendType="circle"
                     stroke="var(--color-success)"
                     strokeWidth={2.5}
                     dot={false}
