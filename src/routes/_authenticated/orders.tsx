@@ -200,7 +200,11 @@ function OrdersPage() {
 }
 
 function CreateOrderDialog({ open, onOpenChange, onCreated }: any) {
-  const [customer, setCustomer] = useState({ customer_name: "", notes: "" });
+  const [customer, setCustomer] = useState({
+    customer_name: "",
+    order_date: new Date().toISOString().slice(0, 10),
+    notes: "",
+  });
   const [lines, setLines] = useState<ServiceLine[]>([
     { service_name: "", price: "", quantity: "1" },
   ]);
@@ -217,7 +221,11 @@ function CreateOrderDialog({ open, onOpenChange, onCreated }: any) {
   );
 
   const reset = () => {
-    setCustomer({ customer_name: "", notes: "" });
+    setCustomer({
+      customer_name: "",
+      order_date: new Date().toISOString().slice(0, 10),
+      notes: "",
+    });
     setLines([{ service_name: "", price: "", quantity: "1" }]);
     setDownpayment("");
   };
@@ -234,6 +242,7 @@ function CreateOrderDialog({ open, onOpenChange, onCreated }: any) {
         .from("orders")
         .insert({
           customer_name: customer.customer_name,
+          order_date: new Date(`${customer.order_date}T00:00:00`).toISOString(),
           notes: customer.notes || null,
         })
         .select()
@@ -281,12 +290,20 @@ function CreateOrderDialog({ open, onOpenChange, onCreated }: any) {
           <DialogTitle>New Order</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="sm:col-span-2">
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9.75rem]">
+            <div>
               <Label>Customer Name</Label>
               <Input
                 value={customer.customer_name}
                 onChange={(e) => setCustomer({ ...customer, customer_name: e.target.value })}
+              />
+            </div>
+            <div className="sm:w-[9.75rem]">
+              <Label>Order Date</Label>
+              <Input
+                type="date"
+                value={customer.order_date}
+                onChange={(e) => setCustomer({ ...customer, order_date: e.target.value })}
               />
             </div>
             <div className="sm:col-span-2">

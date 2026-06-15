@@ -84,13 +84,15 @@ function ExpensesPage() {
   };
   const openEdit = (e: any) => {
     setEditing(e);
-    setForms([{
-      name: e.name,
-      category: e.category ?? "",
-      amount: String(e.amount),
-      expense_date: new Date(e.expense_date).toISOString().slice(0, 10),
-      notes: e.notes ?? "",
-    }]);
+    setForms([
+      {
+        name: e.name,
+        category: e.category ?? "",
+        amount: String(e.amount),
+        expense_date: new Date(e.expense_date).toISOString().slice(0, 10),
+        notes: e.notes ?? "",
+      },
+    ]);
     setOpen(true);
   };
   const updateForm = (index: number, patch: Partial<ExpenseForm>) => {
@@ -136,7 +138,9 @@ function ExpensesPage() {
       qc.invalidateQueries({ queryKey: ["expenses"] });
       setOpen(false);
       reset();
-      toast.success(editing ? "Saved" : `${forms.length} expense${forms.length === 1 ? "" : "s"} saved`);
+      toast.success(
+        editing ? "Saved" : `${forms.length} expense${forms.length === 1 ? "" : "s"} saved`,
+      );
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -170,12 +174,20 @@ function ExpensesPage() {
             <DialogHeader>
               <DialogTitle>{editing ? "Edit" : "New"} Expense</DialogTitle>
             </DialogHeader>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="sm:col-span-2">
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9.75rem]">
+              <div>
                 <Label>Name</Label>
                 <Input
                   value={form.name}
                   onChange={(e) => updateForm(0, { name: e.target.value })}
+                />
+              </div>
+              <div className="sm:w-[9.75rem]">
+                <Label>Expense Date</Label>
+                <Input
+                  type="date"
+                  value={form.expense_date}
+                  onChange={(e) => updateForm(0, { expense_date: e.target.value })}
                 />
               </div>
               <div>
@@ -221,12 +233,20 @@ function ExpensesPage() {
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="sm:col-span-2">
+                      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9.75rem]">
+                        <div>
                           <Label>Name</Label>
                           <Input
                             value={expense.name}
                             onChange={(e) => updateForm(index, { name: e.target.value })}
+                          />
+                        </div>
+                        <div className="sm:w-[9.75rem]">
+                          <Label>Expense Date</Label>
+                          <Input
+                            type="date"
+                            value={expense.expense_date}
+                            onChange={(e) => updateForm(index, { expense_date: e.target.value })}
                           />
                         </div>
                         <div>
