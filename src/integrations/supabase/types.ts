@@ -14,6 +14,230 @@ export type Database = {
   }
   public: {
     Tables: {
+      employee_cash_advances: {
+        Row: {
+          advance_date: string
+          amount: number
+          created_at: string
+          employee_id: string
+          id: string
+          notes: string | null
+          paid_amount: number
+          updated_at: string
+        }
+        Insert: {
+          advance_date?: string
+          amount?: number
+          created_at?: string
+          employee_id: string
+          id?: string
+          notes?: string | null
+          paid_amount?: number
+          updated_at?: string
+        }
+        Update: {
+          advance_date?: string
+          amount?: number
+          created_at?: string
+          employee_id?: string
+          id?: string
+          notes?: string | null
+          paid_amount?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_cash_advances_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employee_payslips: {
+        Row: {
+          absent_days: number
+          attendance_deductions: number
+          cash_advance_deducted: number
+          created_at: string
+          daily_rate: number
+          employee_id: string
+          gross_pay: number
+          halfday_days: number
+          id: string
+          manual_deduction_total: number
+          manual_deductions: Json
+          net_pay: number
+          period_end: string
+          period_start: string
+          required_days: number
+          total_deductions: number
+          updated_at: string
+          worked_days: number
+        }
+        Insert: {
+          absent_days?: number
+          attendance_deductions?: number
+          cash_advance_deducted?: number
+          created_at?: string
+          daily_rate?: number
+          employee_id: string
+          gross_pay?: number
+          halfday_days?: number
+          id?: string
+          manual_deduction_total?: number
+          manual_deductions?: Json
+          net_pay?: number
+          period_end: string
+          period_start: string
+          required_days?: number
+          total_deductions?: number
+          updated_at?: string
+          worked_days?: number
+        }
+        Update: {
+          absent_days?: number
+          attendance_deductions?: number
+          cash_advance_deducted?: number
+          created_at?: string
+          daily_rate?: number
+          employee_id?: string
+          gross_pay?: number
+          halfday_days?: number
+          id?: string
+          manual_deduction_total?: number
+          manual_deductions?: Json
+          net_pay?: number
+          period_end?: string
+          period_start?: string
+          required_days?: number
+          total_deductions?: number
+          updated_at?: string
+          worked_days?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_payslips_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employee_attendance: {
+        Row: {
+          created_at: string
+          employee_id: string
+          id: string
+          notes: string | null
+          status: string
+          updated_at: string
+          work_date: string
+        }
+        Insert: {
+          created_at?: string
+          employee_id: string
+          id?: string
+          notes?: string | null
+          status?: string
+          updated_at?: string
+          work_date: string
+        }
+        Update: {
+          created_at?: string
+          employee_id?: string
+          id?: string
+          notes?: string | null
+          status?: string
+          updated_at?: string
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_attendance_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employee_schedules: {
+        Row: {
+          created_at: string
+          day_of_week: number
+          employee_id: string
+          id: string
+          is_working_day: boolean
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          day_of_week: number
+          employee_id: string
+          id?: string
+          is_working_day?: boolean
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          day_of_week?: number
+          employee_id?: string
+          id?: string
+          is_working_day?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_schedules_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employees: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          half_month_salary: number
+          name: string
+          notes: string | null
+          phone: string | null
+          required_half_month_days: number
+          role: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          half_month_salary?: number
+          id?: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          required_half_month_days?: number
+          role?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          half_month_salary?: number
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          required_half_month_days?: number
+          role?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       expenses: {
         Row: {
           amount: number

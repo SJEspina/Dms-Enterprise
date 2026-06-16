@@ -10,6 +10,7 @@ import {
   LogOut,
   Receipt,
   ShoppingBag,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ const nav = [
   { to: "/orders", label: "Orders", icon: ShoppingBag },
   { to: "/expenses", label: "Expenses", icon: Receipt },
   { to: "/reports", label: "Reports", icon: FileBarChart },
+  { to: "/employees", label: "Employees", icon: Users },
 ];
 
 function AuthLayout() {
