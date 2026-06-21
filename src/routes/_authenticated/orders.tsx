@@ -261,9 +261,12 @@ function CreateOrderDialog({ open, onOpenChange, onCreated }: any) {
 
       const dp = parseFloat(downpayment);
       if (dp > 0) {
-        const { error: e3 } = await supabase
-          .from("payments")
-          .insert({ order_id: order.id, amount: dp, notes: "Downpayment" });
+        const { error: e3 } = await supabase.from("payments").insert({
+          order_id: order.id,
+          amount: dp,
+          payment_date: new Date(`${customer.order_date}T00:00:00`).toISOString(),
+          notes: "Downpayment",
+        });
         if (e3) throw e3;
       }
       toast.success("Order created");
@@ -455,6 +458,8 @@ function OrderDetailDialog({ order, onClose, onChange }: any) {
       qc.invalidateQueries({ queryKey: ["orders"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       qc.invalidateQueries({ queryKey: ["trend"] });
+      qc.invalidateQueries({ queryKey: ["report"] });
+      qc.invalidateQueries({ queryKey: ["annual-report"] });
       toast.success("Payment recorded");
     },
     onError: (e: any) => toast.error(e.message),
@@ -468,6 +473,8 @@ function OrderDetailDialog({ order, onClose, onChange }: any) {
     onChange();
     qc.invalidateQueries({ queryKey: ["dashboard"] });
     qc.invalidateQueries({ queryKey: ["trend"] });
+    qc.invalidateQueries({ queryKey: ["report"] });
+    qc.invalidateQueries({ queryKey: ["annual-report"] });
   };
 
   const saveItems = useMutation({
@@ -532,6 +539,8 @@ function OrderDetailDialog({ order, onClose, onChange }: any) {
       qc.invalidateQueries({ queryKey: ["orders"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       qc.invalidateQueries({ queryKey: ["trend"] });
+      qc.invalidateQueries({ queryKey: ["report"] });
+      qc.invalidateQueries({ queryKey: ["annual-report"] });
       toast.success("Items updated");
     },
     onError: (e: any) => toast.error(e.message),

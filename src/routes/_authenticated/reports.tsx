@@ -87,11 +87,16 @@ function ReportsPage() {
     queryFn: async () => {
       const fromIso = new Date(applied.from + "T00:00:00").toISOString();
       const toIso = new Date(applied.to + "T23:59:59").toISOString();
-      const [orders, expenses, historicalSales] = await Promise.all([
+      const [payments, orders, expenses, historicalSales] = await Promise.all([
+        supabase
+          .from("payments")
+          .select("amount,payment_date,orders(customer_name)")
+          .gte("payment_date", fromIso)
+          .lte("payment_date", toIso),
         supabase
           .from("orders")
           .select(
-            "paid_amount,payment_status,customer_name,order_date,order_services(service_name,quantity,subtotal)",
+            "payment_status,customer_name,order_date,order_services(service_name,quantity,subtotal)",
           )
           .gte("order_date", fromIso)
           .lte("order_date", toIso),
@@ -107,6 +112,7 @@ function ReportsPage() {
           .lte("sales_month", applied.to),
       ]);
       return {
+        payments: payments.data ?? [],
         orders: orders.data ?? [],
         expenses: expenses.data ?? [],
         historicalSales: historicalSales.data ?? [],
@@ -114,12 +120,12 @@ function ReportsPage() {
     },
   });
 
-  const orderSales = (data?.orders ?? []).reduce((s, o) => s + Number(o.paid_amount), 0);
+  const paymentSales = (data?.payments ?? []).reduce((s, p) => s + Number(p.amount), 0);
   const historicalSalesTotal = (data?.historicalSales ?? []).reduce(
     (s, h) => s + Number(h.amount),
     0,
   );
-  const sales = orderSales + historicalSalesTotal;
+  const sales = paymentSales + historicalSalesTotal;
   const totalExpenses = (data?.expenses ?? []).reduce((s, e) => s + Number(e.amount), 0);
   const profit = sales - totalExpenses;
   const chartColors = [
@@ -189,14 +195,12 @@ function ReportsPage() {
   const { data: annualTrend, isLoading: annualLoading } = useQuery({
     queryKey: ["annual-report", selectedYear],
     queryFn: async () => {
-      const [orders, expenses, historicalSales] = await Promise.all([
+      const [payments, expenses, historicalSales] = await Promise.all([
         supabase
-          .from("orders")
-          .select(
-            "paid_amount,customer_name,order_date,order_services(service_name,quantity,price,subtotal)",
-          )
-          .gte("order_date", yearStart.toISOString())
-          .lte("order_date", yearEnd.toISOString()),
+          .from("payments")
+          .select("amount,payment_date,orders(customer_name)")
+          .gte("payment_date", yearStart.toISOString())
+          .lte("payment_date", yearEnd.toISOString()),
         supabase
           .from("expenses")
           .select("name,category,amount,quantity,expense_date,notes")
@@ -210,8 +214,8 @@ function ReportsPage() {
       ]);
 
       return yearMonths.map((m) => {
-        const monthOrders = (orders.data ?? []).filter(
-          (o) => new Date(o.order_date) >= m.from && new Date(o.order_date) <= m.to,
+        const monthPayments = (payments.data ?? []).filter(
+          (p) => new Date(p.payment_date) >= m.from && new Date(p.payment_date) <= m.to,
         );
         const monthExpenseItems = (expenses.data ?? []).filter(
           (e) => new Date(e.expense_date) >= m.from && new Date(e.expense_date) <= m.to,
@@ -221,29 +225,26 @@ function ReportsPage() {
             new Date(`${h.sales_month}T00:00:00`) >= m.from &&
             new Date(`${h.sales_month}T00:00:00`) <= m.to,
         );
-        const monthOrderSales = monthOrders.reduce((sum, o) => sum + Number(o.paid_amount), 0);
+        const monthPaymentSales = monthPayments.reduce((sum, p) => sum + Number(p.amount), 0);
         const monthHistoricalTotal = monthHistoricalSales.reduce(
           (sum, sale) => sum + Number(sale.amount),
           0,
         );
-        const monthSales = monthOrderSales + monthHistoricalTotal;
+        const monthSales = monthPaymentSales + monthHistoricalTotal;
         const monthExpenses = monthExpenseItems.reduce((sum, e) => sum + Number(e.amount), 0);
-        const salesRows = monthOrders
-          .flatMap((order) => {
-            const services =
-              order.order_services && order.order_services.length > 0
-                ? order.order_services
-                : [{ service_name: "Unlisted item", quantity: 1, price: 0, subtotal: 0 }];
+        const salesRows = monthPayments
+          .map((payment) => {
+            const order = Array.isArray(payment.orders) ? payment.orders[0] : payment.orders;
 
-            return services.map((service) => [
-              format(new Date(order.order_date), "yyyy-MM-dd"),
-              order.customer_name ?? "",
-              service.service_name ?? "",
-              String(service.quantity ?? ""),
-              peso(service.price ?? 0),
-              peso(service.subtotal ?? 0),
-              peso(order.paid_amount ?? 0),
-            ]);
+            return [
+              format(new Date(payment.payment_date), "yyyy-MM-dd"),
+              order?.customer_name ?? "",
+              "Payment received",
+              "1",
+              peso(payment.amount ?? 0),
+              peso(payment.amount ?? 0),
+              peso(payment.amount ?? 0),
+            ];
           })
           .concat(
             monthHistoricalSales.map((sale) => [

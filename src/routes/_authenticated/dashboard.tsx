@@ -54,7 +54,7 @@ function Dashboard() {
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard", range],
     queryFn: async () => {
-      const [orders, expenses, historicalSales, recentOrders] = await Promise.all([
+      const [orders, payments, expenses, historicalSales, recentOrders] = await Promise.all([
         supabase
           .from("orders")
           .select(
@@ -62,6 +62,11 @@ function Dashboard() {
           )
           .gte("order_date", from.toISOString())
           .lte("order_date", to.toISOString()),
+        supabase
+          .from("payments")
+          .select("amount,payment_date,orders(customer_name)")
+          .gte("payment_date", from.toISOString())
+          .lte("payment_date", to.toISOString()),
         supabase
           .from("expenses")
           .select("amount,expense_date")
@@ -83,6 +88,7 @@ function Dashboard() {
 
       return {
         orders: orders.data ?? [],
+        payments: payments.data ?? [],
         expenses: expenses.data ?? [],
         historicalSales: historicalSales.data ?? [],
         recent: recentOrders.data ?? [],
@@ -90,12 +96,12 @@ function Dashboard() {
     },
   });
 
-  const orderSales = (data?.orders ?? []).reduce((s, o) => s + Number(o.paid_amount), 0);
+  const paymentSales = (data?.payments ?? []).reduce((s, p) => s + Number(p.amount), 0);
   const historicalSalesTotal = (data?.historicalSales ?? []).reduce(
     (s, sale) => s + Number(sale.amount),
     0,
   );
-  const sales = orderSales + historicalSalesTotal;
+  const sales = paymentSales + historicalSalesTotal;
   const totalExpenses = (data?.expenses ?? []).reduce((s, e) => s + Number(e.amount), 0);
   const profit = sales - totalExpenses;
   const orderCount = (data?.orders ?? []).length;
@@ -130,12 +136,12 @@ function Dashboard() {
   const { data: trend } = useQuery({
     queryKey: ["trend", range, from.toISOString(), to.toISOString()],
     queryFn: async () => {
-      const [o, e, h] = await Promise.all([
+      const [p, e, h] = await Promise.all([
         supabase
-          .from("orders")
-          .select("paid_amount,order_date")
-          .gte("order_date", from.toISOString())
-          .lte("order_date", to.toISOString()),
+          .from("payments")
+          .select("amount,payment_date")
+          .gte("payment_date", from.toISOString())
+          .lte("payment_date", to.toISOString()),
         supabase
           .from("expenses")
           .select("amount,expense_date")
@@ -149,11 +155,11 @@ function Dashboard() {
       ]);
 
       return trendPeriods.map((period) => {
-        const orderSales = (o.data ?? [])
+        const paymentSales = (p.data ?? [])
           .filter(
-            (x) => new Date(x.order_date) >= period.from && new Date(x.order_date) <= period.to,
+            (x) => new Date(x.payment_date) >= period.from && new Date(x.payment_date) <= period.to,
           )
-          .reduce((s, x) => s + Number(x.paid_amount), 0);
+          .reduce((s, x) => s + Number(x.amount), 0);
         const historicalSales = (h.data ?? [])
           .filter((x) => {
             const saleDate = new Date(`${x.sales_month}T00:00:00`);
@@ -166,7 +172,7 @@ function Dashboard() {
             (x) => new Date(x.expense_date) >= period.from && new Date(x.expense_date) <= period.to,
           )
           .reduce((s, x) => s + Number(x.amount), 0);
-        const sales = orderSales + historicalSales;
+        const sales = paymentSales + historicalSales;
 
         return {
           day: period.label,
@@ -193,11 +199,12 @@ function Dashboard() {
     }))
     .filter((item) => item.value > 0);
   const topCustomers = Array.from(
-    (data?.orders ?? []).reduce((customers, order) => {
-      const name = order.customer_name?.trim() || "Unnamed Customer";
+    (data?.payments ?? []).reduce((customers, payment) => {
+      const order = Array.isArray(payment.orders) ? payment.orders[0] : payment.orders;
+      const name = order?.customer_name?.trim() || "Unnamed Customer";
       const current = customers.get(name) ?? { name, total: 0, orders: 0 };
 
-      current.total += Number(order.paid_amount || 0);
+      current.total += Number(payment.amount || 0);
       current.orders += 1;
       customers.set(name, current);
 
