@@ -82,11 +82,17 @@ const statuses: Record<AttendanceStatus, { label: string; badge: string }> = {
 
 const defaultWorkingDays = [1, 2, 3, 4, 5, 6];
 
-function blankManualDeductions() {
-  return [
-    { name: "", amount: "" },
-    { name: "", amount: "" },
-  ];
+type ManualDeductionForm = {
+  name: string;
+  amount: string;
+};
+
+function blankManualDeductionForm(): ManualDeductionForm {
+  return { name: "", amount: "" };
+}
+
+function blankManualDeductions(): ManualDeductionForm[] {
+  return [];
 }
 
 function numberValue(value: string | number | null | undefined) {
@@ -222,6 +228,13 @@ function EmployeesPage() {
   const [selectedHistoryEmployeeId, setSelectedHistoryEmployeeId] = useState("");
   const [payrollPeriod, setPayrollPeriod] = useState(currentHalfMonthPeriod);
   const [manualDeductions, setManualDeductions] = useState(blankManualDeductions);
+  const [manualDeductionForm, setManualDeductionForm] = useState(blankManualDeductionForm);
+  const [manualDeductionApplyAmount, setManualDeductionApplyAmount] = useState("");
+  const [editingManualDeductionIndex, setEditingManualDeductionIndex] = useState<number | null>(
+    null,
+  );
+  const [editingManualDeductionForm, setEditingManualDeductionForm] =
+    useState(blankManualDeductionForm);
   const [cashAdvanceForm, setCashAdvanceForm] = useState({
     amount: "",
     advance_date: todayInputValue(),
@@ -337,6 +350,18 @@ function EmployeesPage() {
       return (data ?? []) as CashAdvanceRow[];
     },
   });
+  const periodCashAdvances = useMemo(
+    () =>
+      cashAdvances.filter(
+        (advance) =>
+          advance.advance_date >= payrollPeriod.start && advance.advance_date <= payrollPeriod.end,
+      ),
+    [cashAdvances, payrollPeriod.end, payrollPeriod.start],
+  );
+  const payrollEligibleCashAdvances = useMemo(
+    () => cashAdvances.filter((advance) => advance.advance_date <= payrollPeriod.end),
+    [cashAdvances, payrollPeriod.end],
+  );
   const { data: payslips = [] } = useQuery({
     queryKey: ["employee-payslips", selectedHistoryEmployee?.id],
     enabled: Boolean(selectedHistoryEmployee?.id),
@@ -349,6 +374,27 @@ function EmployeesPage() {
 
       if (error) throw error;
       return (data ?? []) as PayslipRow[];
+    },
+  });
+  const { data: currentPayrollPayslip = null } = useQuery({
+    queryKey: [
+      "employee-current-payslip",
+      selectedPayrollEmployee?.id,
+      payrollPeriod.start,
+      payrollPeriod.end,
+    ],
+    enabled: Boolean(selectedPayrollEmployee?.id),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employee_payslips")
+        .select("*")
+        .eq("employee_id", selectedPayrollEmployee!.id)
+        .eq("period_start", payrollPeriod.start)
+        .eq("period_end", payrollPeriod.end)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data as PayslipRow | null;
     },
   });
   const today = useMemo(() => todayInputValue(), []);
@@ -384,6 +430,10 @@ function EmployeesPage() {
 
   useEffect(() => {
     setManualDeductions(blankManualDeductions());
+    setManualDeductionForm(blankManualDeductionForm());
+    setManualDeductionApplyAmount("");
+    setEditingManualDeductionIndex(null);
+    setEditingManualDeductionForm(blankManualDeductionForm());
     setCashAdvanceDeduction("");
     setAppliedCashAdvanceDeduction(0);
     setEditingCashAdvanceId("");
@@ -399,6 +449,68 @@ function EmployeesPage() {
         .filter((item) => item.name || item.amount > 0),
     [manualDeductions],
   );
+
+  const addManualDeduction = () => {
+    const name = manualDeductionForm.name.trim();
+    const amount = numberValue(manualDeductionForm.amount);
+
+    if (!name && amount <= 0) {
+      toast.error("Enter a deduction name or amount");
+      return;
+    }
+
+    setManualDeductions((current) => [...current, { name, amount: amount ? String(amount) : "" }]);
+    setManualDeductionForm(blankManualDeductionForm());
+  };
+
+  const applyManualDeduction = () => {
+    const amount = numberValue(manualDeductionApplyAmount);
+
+    if (amount <= 0) {
+      toast.error("Enter a manual deduction amount first");
+      return;
+    }
+
+    setManualDeductions((current) => [
+      ...current,
+      { name: "Manual deduction", amount: String(amount) },
+    ]);
+    setManualDeductionApplyAmount("");
+  };
+
+  const openEditManualDeduction = (deduction: ManualDeductionForm, index: number) => {
+    setEditingManualDeductionIndex(index);
+    setEditingManualDeductionForm({
+      name: deduction.name,
+      amount: deduction.amount,
+    });
+  };
+
+  const updateManualDeduction = (index: number) => {
+    const name = editingManualDeductionForm.name.trim();
+    const amount = numberValue(editingManualDeductionForm.amount);
+
+    if (!name && amount <= 0) {
+      toast.error("Enter a deduction name or amount");
+      return;
+    }
+
+    setManualDeductions((current) =>
+      current.map((item, itemIndex) =>
+        itemIndex === index ? { name, amount: amount ? String(amount) : "" } : item,
+      ),
+    );
+    setEditingManualDeductionIndex(null);
+    setEditingManualDeductionForm(blankManualDeductionForm());
+  };
+
+  const deleteManualDeduction = (index: number) => {
+    setManualDeductions((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    if (editingManualDeductionIndex === index) {
+      setEditingManualDeductionIndex(null);
+      setEditingManualDeductionForm(blankManualDeductionForm());
+    }
+  };
 
   const payrollSummary = useMemo(() => {
     const salary = numberValue(selectedPayrollEmployee?.half_month_salary);
@@ -423,7 +535,7 @@ function EmployeesPage() {
       (total, item) => total + item.amount,
       0,
     );
-    const cashAdvanceBalance = cashAdvances.reduce(
+    const cashAdvanceBalance = payrollEligibleCashAdvances.reduce(
       (total, item) =>
         total + Math.max(0, numberValue(item.amount) - numberValue(item.paid_amount)),
       0,
@@ -432,12 +544,19 @@ function EmployeesPage() {
       numberValue(cashAdvanceDeduction),
       cashAdvanceBalance,
     );
+    const savedCashAdvanceDeduction = numberValue(currentPayrollPayslip?.cash_advance_deducted);
     const requestedCashAdvanceDeduction =
-      appliedCashAdvanceDeduction > 0 ? appliedCashAdvanceDeduction : typedCashAdvanceDeduction;
-    const cashAdvanceDeducted = Math.min(
-      requestedCashAdvanceDeduction,
-      cashAdvanceBalance + appliedCashAdvanceDeduction,
-    );
+      appliedCashAdvanceDeduction > 0
+        ? appliedCashAdvanceDeduction
+        : typedCashAdvanceDeduction > 0
+          ? typedCashAdvanceDeduction
+          : savedCashAdvanceDeduction;
+    const cashAdvanceDeducted =
+      savedCashAdvanceDeduction > 0 &&
+      appliedCashAdvanceDeduction <= 0 &&
+      typedCashAdvanceDeduction <= 0
+        ? savedCashAdvanceDeduction
+        : Math.min(requestedCashAdvanceDeduction, cashAdvanceBalance + appliedCashAdvanceDeduction);
     const totalDeductions =
       absentDeduction + halfdayDeduction + manualDeductionTotal + cashAdvanceDeducted;
 
@@ -456,7 +575,7 @@ function EmployeesPage() {
       cashAdvanceDeducted,
       totalDeductions,
       caBalanceAfterPayroll:
-        appliedCashAdvanceDeduction > 0
+        appliedCashAdvanceDeduction > 0 || savedCashAdvanceDeduction > 0
           ? cashAdvanceBalance
           : Math.max(0, cashAdvanceBalance - typedCashAdvanceDeduction),
       netPay: salary - totalDeductions,
@@ -464,8 +583,9 @@ function EmployeesPage() {
   }, [
     appliedCashAdvanceDeduction,
     cashAdvanceDeduction,
-    cashAdvances,
+    currentPayrollPayslip?.cash_advance_deducted,
     filledManualDeductions,
+    payrollEligibleCashAdvances,
     payrollAttendance,
     selectedPayrollEmployee?.half_month_salary,
     selectedPayrollEmployee?.required_half_month_days,
@@ -702,7 +822,7 @@ function EmployeesPage() {
       let remaining = appliedAmount;
       if (remaining <= 0) throw new Error("Enter a cash advance deduction first");
 
-      for (const advance of cashAdvances) {
+      for (const advance of payrollEligibleCashAdvances) {
         if (remaining <= 0) break;
 
         const openBalance = Math.max(
@@ -762,6 +882,7 @@ function EmployeesPage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["employee-payslips"] });
+      qc.invalidateQueries({ queryKey: ["employee-current-payslip"] });
       toast.success("Payslip saved");
     },
     onError: (error: unknown) => toast.error(errorMessage(error)),
@@ -775,6 +896,7 @@ function EmployeesPage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["employee-payslips"] });
+      qc.invalidateQueries({ queryKey: ["employee-current-payslip"] });
       toast.success("Payslip deleted");
     },
     onError: (error: unknown) => toast.error(errorMessage(error)),
@@ -1192,62 +1314,162 @@ function EmployeesPage() {
                   <div className="mt-5 border-t pt-4">
                     <h4 className="font-semibold">Manual Deductions</h4>
                     <div className="mt-3 grid gap-3">
-                      {manualDeductions.map((deduction, index) => (
-                        <div key={index} className="grid gap-2 sm:grid-cols-[1fr_140px_40px]">
-                          <Input
-                            placeholder="Deduction name"
-                            value={deduction.name}
-                            onChange={(event) =>
-                              setManualDeductions((current) =>
-                                current.map((item, itemIndex) =>
-                                  itemIndex === index
-                                    ? { ...item, name: event.target.value }
-                                    : item,
-                                ),
-                              )
-                            }
-                          />
-                          <Input
-                            type="number"
-                            min="0"
-                            placeholder="Amount"
-                            value={deduction.amount}
-                            onChange={(event) =>
-                              setManualDeductions((current) =>
-                                current.map((item, itemIndex) =>
-                                  itemIndex === index
-                                    ? { ...item, amount: event.target.value }
-                                    : item,
-                                ),
-                              )
-                            }
-                          />
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            className="h-9 text-destructive hover:text-destructive"
-                            onClick={() =>
-                              setManualDeductions((current) =>
-                                current.filter((_, itemIndex) => itemIndex !== index),
-                              )
-                            }
-                            aria-label={`Delete deduction ${index + 1}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ))}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() =>
-                          setManualDeductions((current) => [...current, { name: "", amount: "" }])
-                        }
-                      >
+                      <div className="grid gap-2 sm:grid-cols-[1fr_140px]">
+                        <Input
+                          placeholder="Deduction name"
+                          value={manualDeductionForm.name}
+                          onChange={(event) =>
+                            setManualDeductionForm((current) => ({
+                              ...current,
+                              name: event.target.value,
+                            }))
+                          }
+                        />
+                        <Input
+                          type="number"
+                          min="0"
+                          placeholder="Amount"
+                          value={manualDeductionForm.amount}
+                          onChange={(event) =>
+                            setManualDeductionForm((current) => ({
+                              ...current,
+                              amount: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                      <Button type="button" variant="outline" onClick={addManualDeduction}>
                         <Plus className="h-4 w-4" />
                         Add Deduction
                       </Button>
+                      <div className="space-y-2">
+                        {manualDeductions.length === 0 ? (
+                          <div className="rounded-2xl border bg-white/60 px-3 py-4 text-center text-sm text-muted-foreground">
+                            No manual deductions added.
+                          </div>
+                        ) : (
+                          manualDeductions.map((deduction, index) => {
+                            const isEditing = editingManualDeductionIndex === index;
+
+                            return (
+                              <div key={index} className="rounded-2xl border bg-white/70 p-3">
+                                {isEditing ? (
+                                  <div className="grid gap-2">
+                                    <div className="grid gap-2 sm:grid-cols-[1fr_140px]">
+                                      <Input
+                                        placeholder="Deduction name"
+                                        value={editingManualDeductionForm.name}
+                                        onChange={(event) =>
+                                          setEditingManualDeductionForm((current) => ({
+                                            ...current,
+                                            name: event.target.value,
+                                          }))
+                                        }
+                                      />
+                                      <Input
+                                        type="number"
+                                        min="0"
+                                        placeholder="Amount"
+                                        value={editingManualDeductionForm.amount}
+                                        onChange={(event) =>
+                                          setEditingManualDeductionForm((current) => ({
+                                            ...current,
+                                            amount: event.target.value,
+                                          }))
+                                        }
+                                      />
+                                    </div>
+                                    <div className="flex justify-end gap-2">
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => {
+                                          setEditingManualDeductionIndex(null);
+                                          setEditingManualDeductionForm(blankManualDeductionForm());
+                                        }}
+                                      >
+                                        Cancel
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        onClick={() => updateManualDeduction(index)}
+                                      >
+                                        Save
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <div className="font-semibold">
+                                        {peso(numberValue(deduction.amount))}
+                                      </div>
+                                      <div className="mt-1 truncate text-sm">
+                                        {deduction.name || "Manual deduction"}
+                                      </div>
+                                    </div>
+                                    <div className="flex shrink-0 gap-1">
+                                      <Button
+                                        type="button"
+                                        size="icon"
+                                        variant="ghost"
+                                        onClick={() => openEditManualDeduction(deduction, index)}
+                                        aria-label={`Edit deduction ${index + 1}`}
+                                      >
+                                        <Pencil className="h-4 w-4" />
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        size="icon"
+                                        variant="ghost"
+                                        className="text-destructive hover:text-destructive"
+                                        onClick={() => deleteManualDeduction(index)}
+                                        aria-label={`Delete deduction ${index + 1}`}
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <PayrollLine
+                          label="Current manual deductions"
+                          value={peso(payrollSummary.manualDeductionTotal)}
+                        />
+                        <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+                          <div className="grid gap-2">
+                            <Label>Deduct this payroll</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              value={manualDeductionApplyAmount}
+                              onChange={(event) =>
+                                setManualDeductionApplyAmount(event.target.value)
+                              }
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            onClick={applyManualDeduction}
+                            disabled={numberValue(manualDeductionApplyAmount) <= 0}
+                          >
+                            Apply
+                          </Button>
+                        </div>
+                        <PayrollLine
+                          label="Manual deductions after payroll"
+                          value={peso(
+                            payrollSummary.manualDeductionTotal +
+                              numberValue(manualDeductionApplyAmount),
+                          )}
+                          strong
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1299,12 +1521,12 @@ function EmployeesPage() {
                     </Button>
                   </div>
                   <div className="mt-4 space-y-2">
-                    {cashAdvances.length === 0 ? (
+                    {periodCashAdvances.length === 0 ? (
                       <div className="rounded-2xl border bg-white/60 px-3 py-4 text-center text-sm text-muted-foreground">
-                        No cash advances added.
+                        No cash advances in this payroll period.
                       </div>
                     ) : (
-                      cashAdvances.map((advance) => {
+                      periodCashAdvances.map((advance) => {
                         const isEditing = editingCashAdvanceId === advance.id;
                         const remainingBalance = Math.max(
                           0,
