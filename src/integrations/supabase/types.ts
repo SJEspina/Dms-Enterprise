@@ -208,9 +208,12 @@ export type Database = {
           name: string
           notes: string | null
           phone: string | null
+          payroll_frequency: string
           required_half_month_days: number
+          required_weekly_days: number
           role: string | null
           updated_at: string
+          weekly_salary: number
         }
         Insert: {
           active?: boolean
@@ -220,9 +223,12 @@ export type Database = {
           name: string
           notes?: string | null
           phone?: string | null
+          payroll_frequency?: string
           required_half_month_days?: number
+          required_weekly_days?: number
           role?: string | null
           updated_at?: string
+          weekly_salary?: number
         }
         Update: {
           active?: boolean
@@ -232,9 +238,12 @@ export type Database = {
           name?: string
           notes?: string | null
           phone?: string | null
+          payroll_frequency?: string
           required_half_month_days?: number
+          required_weekly_days?: number
           role?: string | null
           updated_at?: string
+          weekly_salary?: number
         }
         Relationships: []
       }

@@ -46,6 +46,7 @@ type CashAdvanceRow = Tables<"employee_cash_advances">;
 type PayslipRow = Tables<"employee_payslips">;
 type EmployeeWithSchedules = EmployeeRow & { employee_schedules?: ScheduleRow[] };
 type AttendanceStatus = "blank" | "present" | "absent" | "halfday" | "day_off";
+type PayrollFrequency = "weekly" | "semi_monthly";
 
 const days = [
   { value: 1, label: "Mon" },
@@ -164,6 +165,25 @@ function currentHalfMonthPeriod() {
   return halfMonthPeriodFromDate(todayInputValue());
 }
 
+function weeklyPeriodFromDate(value: string) {
+  const date = dateFromInputValue(value);
+  const dayOfWeek = date.getDay();
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const start = new Date(date);
+  start.setDate(date.getDate() + mondayOffset);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+
+  return {
+    start: dateInputValue(start),
+    end: dateInputValue(end),
+  };
+}
+
+function currentWeeklyPeriod() {
+  return weeklyPeriodFromDate(todayInputValue());
+}
+
 function moveHalfMonthPeriod(period: { start: string; end: string }, direction: -1 | 1) {
   const start = dateFromInputValue(period.start);
   const day = start.getDate();
@@ -173,6 +193,21 @@ function moveHalfMonthPeriod(period: { start: string; end: string }, direction: 
       : new Date(start.getFullYear(), start.getMonth() - (day <= 15 ? 1 : 0), day <= 15 ? 16 : 1);
 
   return halfMonthPeriodFromDate(dateInputValue(nextStart));
+}
+
+function moveWeeklyPeriod(period: { start: string; end: string }, direction: -1 | 1) {
+  const start = dateFromInputValue(period.start);
+  start.setDate(start.getDate() + direction * 7);
+
+  return weeklyPeriodFromDate(dateInputValue(start));
+}
+
+function normalizePayrollFrequency(value: string | null | undefined): PayrollFrequency {
+  return value === "weekly" ? "weekly" : "semi_monthly";
+}
+
+function payrollFrequencyLabel(frequency: PayrollFrequency) {
+  return frequency === "weekly" ? "Weekly" : "Semi-Monthly";
 }
 
 function monthRange(month: string) {
@@ -252,8 +287,11 @@ function EmployeesPage() {
     name: "",
     role: "",
     active: true,
+    payrollFrequency: "semi_monthly" as PayrollFrequency,
+    weeklySalary: "",
+    requiredWeeklyDays: "6",
     halfMonthSalary: "",
-    requiredDays: "12",
+    requiredHalfMonthDays: "12",
     workingDays: defaultWorkingDays,
   });
 
@@ -309,6 +347,9 @@ function EmployeesPage() {
       activeEmployees.find((employee) => employee.id === selectedPayrollEmployeeId) ??
       activeEmployees[0],
     [activeEmployees, selectedPayrollEmployeeId],
+  );
+  const selectedPayrollFrequency = normalizePayrollFrequency(
+    selectedPayrollEmployee?.payroll_frequency,
   );
   const selectedHistoryEmployee = useMemo(
     () =>
@@ -429,6 +470,12 @@ function EmployeesPage() {
   }, [selectedHistoryEmployeeId, selectedPayrollEmployee?.id]);
 
   useEffect(() => {
+    setPayrollPeriod(
+      selectedPayrollFrequency === "weekly" ? currentWeeklyPeriod() : currentHalfMonthPeriod(),
+    );
+  }, [selectedPayrollFrequency]);
+
+  useEffect(() => {
     setManualDeductions(blankManualDeductions());
     setManualDeductionForm(blankManualDeductionForm());
     setManualDeductionApplyAmount("");
@@ -513,10 +560,16 @@ function EmployeesPage() {
   };
 
   const payrollSummary = useMemo(() => {
-    const salary = numberValue(selectedPayrollEmployee?.half_month_salary);
+    const payrollFrequency = normalizePayrollFrequency(selectedPayrollEmployee?.payroll_frequency);
+    const salary =
+      payrollFrequency === "weekly"
+        ? numberValue(selectedPayrollEmployee?.weekly_salary)
+        : numberValue(selectedPayrollEmployee?.half_month_salary);
     const requiredDays = Math.max(
       1,
-      numberValue(selectedPayrollEmployee?.required_half_month_days),
+      payrollFrequency === "weekly"
+        ? numberValue(selectedPayrollEmployee?.required_weekly_days)
+        : numberValue(selectedPayrollEmployee?.required_half_month_days),
     );
     const dailyRate = salary / requiredDays;
     const presentDays = payrollAttendance.filter(
@@ -563,6 +616,7 @@ function EmployeesPage() {
     return {
       salary,
       requiredDays,
+      payrollFrequency,
       dailyRate,
       presentDays,
       absentDays,
@@ -588,7 +642,10 @@ function EmployeesPage() {
     payrollEligibleCashAdvances,
     payrollAttendance,
     selectedPayrollEmployee?.half_month_salary,
+    selectedPayrollEmployee?.payroll_frequency,
     selectedPayrollEmployee?.required_half_month_days,
+    selectedPayrollEmployee?.required_weekly_days,
+    selectedPayrollEmployee?.weekly_salary,
   ]);
 
   useEffect(() => {
@@ -610,8 +667,11 @@ function EmployeesPage() {
       name: "",
       role: "",
       active: true,
+      payrollFrequency: "semi_monthly",
+      weeklySalary: "",
+      requiredWeeklyDays: "6",
       halfMonthSalary: "",
-      requiredDays: "12",
+      requiredHalfMonthDays: "12",
       workingDays: defaultWorkingDays,
     });
   };
@@ -631,8 +691,11 @@ function EmployeesPage() {
       name: employee.name,
       role: employee.role ?? "",
       active: employee.active,
+      payrollFrequency: normalizePayrollFrequency(employee.payroll_frequency),
+      weeklySalary: String(numberValue(employee.weekly_salary) || ""),
+      requiredWeeklyDays: String(numberValue(employee.required_weekly_days) || 6),
       halfMonthSalary: String(numberValue(employee.half_month_salary) || ""),
-      requiredDays: String(numberValue(employee.required_half_month_days) || 12),
+      requiredHalfMonthDays: String(numberValue(employee.required_half_month_days) || 12),
       workingDays: workingDays.length > 0 ? workingDays : defaultWorkingDays,
     });
     setEmployeeOpen(true);
@@ -647,8 +710,11 @@ function EmployeesPage() {
         name,
         role: employeeForm.role.trim() || null,
         active: employeeForm.active,
+        payroll_frequency: employeeForm.payrollFrequency,
+        weekly_salary: numberValue(employeeForm.weeklySalary),
+        required_weekly_days: Math.max(1, numberValue(employeeForm.requiredWeeklyDays)),
         half_month_salary: numberValue(employeeForm.halfMonthSalary),
-        required_half_month_days: Math.max(1, numberValue(employeeForm.requiredDays)),
+        required_half_month_days: Math.max(1, numberValue(employeeForm.requiredHalfMonthDays)),
       };
       const employeeResult = editingEmployee
         ? await supabase
@@ -982,6 +1048,15 @@ function EmployeesPage() {
     });
   };
 
+  const payrollPeriodFromDate =
+    selectedPayrollFrequency === "weekly" ? weeklyPeriodFromDate : halfMonthPeriodFromDate;
+  const movePayrollPeriod =
+    selectedPayrollFrequency === "weekly" ? moveWeeklyPeriod : moveHalfMonthPeriod;
+  const payrollPeriodDescription =
+    selectedPayrollFrequency === "weekly"
+      ? "Attendance deductions, cash advance, and net pay for a weekly period"
+      : "Attendance deductions, cash advance, and net pay for a half-month period";
+
   return (
     <div className="flex min-h-[calc(100vh-4rem)] min-w-0 flex-col gap-4 sm:gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1013,83 +1088,95 @@ function EmployeesPage() {
           </CardHeader>
           <CardContent>
             <div className="overflow-auto rounded-2xl border bg-white/70">
-              <Table className="min-w-[760px] table-fixed">
+              <Table className="min-w-[880px] table-fixed">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-1/6">Name</TableHead>
-                    <TableHead className="w-1/6">Role</TableHead>
-                    <TableHead className="w-1/6">Schedule</TableHead>
-                    <TableHead className="w-1/6 text-center">Required Days</TableHead>
-                    <TableHead className="w-1/6 text-center">Status</TableHead>
-                    <TableHead className="w-1/6 text-center">Actions</TableHead>
+                    <TableHead className="w-[15%]">Name</TableHead>
+                    <TableHead className="w-[15%]">Role</TableHead>
+                    <TableHead className="w-[18%]">Schedule</TableHead>
+                    <TableHead className="w-[16%] text-center">Payroll</TableHead>
+                    <TableHead className="w-[14%] text-center">Required Days</TableHead>
+                    <TableHead className="w-[11%] text-center">Status</TableHead>
+                    <TableHead className="w-[11%] text-center">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {employeesLoading ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                      <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                         Loading employees...
                       </TableCell>
                     </TableRow>
                   ) : employees.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                      <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                         No employees added yet.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    employees.map((employee) => (
-                      <TableRow key={employee.id}>
-                        <TableCell>
-                          <div className="font-medium">{employee.name}</div>
-                        </TableCell>
-                        <TableCell>{employee.role || "-"}</TableCell>
-                        <TableCell>
-                          <span className="text-sm">
-                            {scheduleLabels(employee.employee_schedules) || "No working days"}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {numberValue(employee.required_half_month_days)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge
-                            variant="secondary"
-                            className={
-                              employee.active
-                                ? "bg-emerald-50 text-emerald-700"
-                                : "bg-slate-100 text-slate-500"
-                            }
-                          >
-                            {employee.active ? "Active" : "Inactive"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex justify-center gap-1">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => openEditEmployee(employee)}
-                              aria-label={`Edit ${employee.name}`}
+                    employees.map((employee) => {
+                      const payrollFrequency = normalizePayrollFrequency(
+                        employee.payroll_frequency,
+                      );
+                      const requiredDays =
+                        payrollFrequency === "weekly"
+                          ? numberValue(employee.required_weekly_days)
+                          : numberValue(employee.required_half_month_days);
+
+                      return (
+                        <TableRow key={employee.id}>
+                          <TableCell>
+                            <div className="font-medium">{employee.name}</div>
+                          </TableCell>
+                          <TableCell>{employee.role || "-"}</TableCell>
+                          <TableCell>
+                            <span className="text-sm">
+                              {scheduleLabels(employee.employee_schedules) || "No working days"}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {payrollFrequencyLabel(payrollFrequency)}
+                          </TableCell>
+                          <TableCell className="text-center">{requiredDays}</TableCell>
+                          <TableCell className="text-center">
+                            <Badge
+                              variant="secondary"
+                              className={
+                                employee.active
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : "bg-slate-100 text-slate-500"
+                              }
                             >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => {
-                                if (confirm(`Delete ${employee.name}?`)) {
-                                  deleteEmployee.mutate(employee);
-                                }
-                              }}
-                              aria-label={`Delete ${employee.name}`}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                              {employee.active ? "Active" : "Inactive"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex justify-center gap-1">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => openEditEmployee(employee)}
+                                aria-label={`Edit ${employee.name}`}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => {
+                                  if (confirm(`Delete ${employee.name}?`)) {
+                                    deleteEmployee.mutate(employee);
+                                  }
+                                }}
+                                aria-label={`Delete ${employee.name}`}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>
@@ -1227,9 +1314,7 @@ function EmployeesPage() {
           <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Payroll Preview</DialogTitle>
-              <DialogDescription>
-                Attendance deductions, cash advance, and net pay for a half-month period
-              </DialogDescription>
+              <DialogDescription>{payrollPeriodDescription}</DialogDescription>
             </DialogHeader>
             <div className="space-y-5">
               <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_150px_150px]">
@@ -1257,7 +1342,7 @@ function EmployeesPage() {
                     type="date"
                     value={payrollPeriod.start}
                     onChange={(event) =>
-                      setPayrollPeriod(halfMonthPeriodFromDate(event.target.value))
+                      setPayrollPeriod(payrollPeriodFromDate(event.target.value))
                     }
                   />
                 </div>
@@ -1270,14 +1355,14 @@ function EmployeesPage() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setPayrollPeriod((current) => moveHalfMonthPeriod(current, -1))}
+                  onClick={() => setPayrollPeriod((current) => movePayrollPeriod(current, -1))}
                 >
                   Previous Period
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setPayrollPeriod((current) => moveHalfMonthPeriod(current, 1))}
+                  onClick={() => setPayrollPeriod((current) => movePayrollPeriod(current, 1))}
                 >
                   Next Period
                 </Button>
@@ -1860,31 +1945,88 @@ function EmployeesPage() {
                 />
               </div>
             </div>
+            <div className="grid gap-2">
+              <Label>Payroll Frequency</Label>
+              <Select
+                value={employeeForm.payrollFrequency}
+                onValueChange={(value) =>
+                  setEmployeeForm({
+                    ...employeeForm,
+                    payrollFrequency: normalizePayrollFrequency(value),
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select payroll frequency" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="weekly">Weekly</SelectItem>
+                  <SelectItem value="semi_monthly">Semi-Monthly</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <Label>Half-Month Salary</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={employeeForm.halfMonthSalary}
-                  onChange={(event) =>
-                    setEmployeeForm({ ...employeeForm, halfMonthSalary: event.target.value })
-                  }
-                  placeholder="9000"
-                />
-              </div>
-              <div>
-                <Label>Required Work Days</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={employeeForm.requiredDays}
-                  onChange={(event) =>
-                    setEmployeeForm({ ...employeeForm, requiredDays: event.target.value })
-                  }
-                  placeholder="12"
-                />
-              </div>
+              {employeeForm.payrollFrequency === "weekly" ? (
+                <>
+                  <div>
+                    <Label>Weekly Salary</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={employeeForm.weeklySalary}
+                      onChange={(event) =>
+                        setEmployeeForm({ ...employeeForm, weeklySalary: event.target.value })
+                      }
+                      placeholder="4500"
+                    />
+                  </div>
+                  <div>
+                    <Label>Required Weekly Days</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={employeeForm.requiredWeeklyDays}
+                      onChange={(event) =>
+                        setEmployeeForm({
+                          ...employeeForm,
+                          requiredWeeklyDays: event.target.value,
+                        })
+                      }
+                      placeholder="6"
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <Label>Half Month Salary</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={employeeForm.halfMonthSalary}
+                      onChange={(event) =>
+                        setEmployeeForm({ ...employeeForm, halfMonthSalary: event.target.value })
+                      }
+                      placeholder="9000"
+                    />
+                  </div>
+                  <div>
+                    <Label>Required Half Month Days</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={employeeForm.requiredHalfMonthDays}
+                      onChange={(event) =>
+                        setEmployeeForm({
+                          ...employeeForm,
+                          requiredHalfMonthDays: event.target.value,
+                        })
+                      }
+                      placeholder="12"
+                    />
+                  </div>
+                </>
+              )}
             </div>
             <div>
               <Label>Weekly Schedule</Label>
